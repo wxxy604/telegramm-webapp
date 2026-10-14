@@ -300,6 +300,8 @@ def handle_message(message):
         payload = text[6:].strip()
         if payload.startswith("buy_") and payload[4:] in PLANS:
             send_invoice(chat_id, user["id"], payload[4:])
+        elif payload.startswith("cbuy_") and payload[5:] in PLANS:
+            crypto_invoice(chat_id, user["id"], payload[5:])
         else:
             handle_start(message, user, payload)
     elif text in ("/menu", "/help"):
