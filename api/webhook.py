@@ -58,17 +58,17 @@ def reply_keyboard():
 
 
 def back_markup():
-    return {"inline_keyboard": [[{"text": "⬅ В меню", "callback_data": "menu"}]]}
+    return {"inline_keyboard": [[{"text": "◀️ Назад в меню", "callback_data": "menu"}]]}
 
 
 def menu_markup():
     rows = [
-        [{"text": "Профиль", "callback_data": "profile"}, {"text": "Подписка", "callback_data": "subscription"}],
-        [{"text": "Ключи", "callback_data": "keys"}, {"text": "Устройства", "callback_data": "devices"}],
-        [{"text": "Рефералы", "callback_data": "referral"}, {"text": "Помощь", "callback_data": "help"}],
+        [{"text": "👤 Профиль", "callback_data": "profile"}, {"text": "💎 Подписка", "callback_data": "subscription"}],
+        [{"text": "🔑 Ключи", "callback_data": "keys"}, {"text": "📱 Устройства", "callback_data": "devices"}],
+        [{"text": "🎁 Рефералы", "callback_data": "referral"}, {"text": "💬 Помощь", "callback_data": "help"}],
     ]
     if WEBAPP_URL:
-        rows.append([{"text": "Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
+        rows.append([{"text": "🚀 Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
     return {"inline_keyboard": rows}
 
 
@@ -103,11 +103,9 @@ def screen(name, user, arg=""):
     if name == "subscription":
         rows = []
         for key, (title, _, stars) in PLANS.items():
-            rows.append([
-                {"text": f"{title} · {stars} ⭐", "callback_data": f"buy:{key}"},
-                {"text": f"{CRYPTO_PRICES[key]} USDT", "callback_data": f"cbuy:{key}"},
-            ])
-        rows.append([{"text": "⬅ В меню", "callback_data": "menu"}])
+            rows.append([{"text": f"⭐ {title} · {stars} звёзд", "callback_data": f"buy:{key}"}])
+            rows.append([{"text": f"💵 {title} · {CRYPTO_PRICES[key]} USDT", "callback_data": f"cbuy:{key}"}])
+        rows.append([{"text": "◀️ Назад в меню", "callback_data": "menu"}])
         paid = paid_status(record)
         return f"Подписка: {paid}\nПробный период: {trial_status(record)}\n\nВыберите тариф:", {"inline_keyboard": rows}
     if name == "plan":
