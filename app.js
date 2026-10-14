@@ -44,8 +44,8 @@ function openBot(link) {
 }
 
 function renderSettings() {
-    document.querySelectorAll("[data-toggle]").forEach(el => {
-        el.classList.toggle("on", !!settings[el.dataset.toggle]);
+    document.querySelectorAll("[data-switch]").forEach(el => {
+        el.classList.toggle("on", !!settings[el.dataset.switch]);
     });
     document.body.dataset.theme = settings.theme ? "light" : "dark";
 }
