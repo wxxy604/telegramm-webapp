@@ -120,7 +120,7 @@ body {
 
 .empty { text-align: center; color: var(--hint); padding: 30px 16px; font-size: 14px; }
 
-.content { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 8px; }
+.content { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 28px; }
 .topbar { flex-shrink: 0; }
 nav {
     flex-shrink: 0; margin-top: 10px;
