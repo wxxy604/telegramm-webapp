@@ -51,6 +51,11 @@ def extend_paid(user_id, days):
     return user
 
 
+def mark_invoice(invoice_id):
+    """Помечает счёт Crypto Pay как учтённый. Возвращает False, если он уже учтён."""
+    return _cmd("SET", f"invoice:{invoice_id}", "1", "NX") == "OK"
+
+
 def register_referral(new_user_id, referrer_id):
     """Регистрирует нового пользователя по реферальной ссылке.
 

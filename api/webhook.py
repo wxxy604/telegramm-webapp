@@ -25,6 +25,9 @@ PLANS = {
 
 _bot_username = None
 
+CRYPTO_TOKEN = os.getenv("CRYPTO_PAY_TOKEN", "")
+CRYPTO_PRICES = {"1m": 2, "3m": 5, "12m": 18}  # цены в USDT
+
 
 def call(method, payload):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
@@ -108,6 +111,7 @@ def screen(name, user, arg=""):
         title, _, stars = PLANS[arg]
         markup = {"inline_keyboard": [
             [{"text": f"Оплатить {stars} ⭐", "callback_data": f"buy:{arg}"}],
+            [{"text": f"Оплатить {CRYPTO_PRICES[arg]} USDT", "callback_data": f"cbuy:{arg}"}],
             [{"text": "⬅ К тарифам", "callback_data": "subscription"}],
         ]}
         return f"Тариф «{title}» — {stars} ⭐\n\nОплата звёздами Telegram внутри бота.", markup
@@ -195,6 +199,58 @@ def handle_web_app_data(message):
         send(chat_id, "Тариф не найден.", reply_keyboard())
 
 
+def crypto_call(method, payload):
+    req = request.Request(
+        f"https://pay.crypt.bot/api/{method}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Crypto-Pay-API-Token": CRYPTO_TOKEN, "Content-Type": "application/json"},
+    )
+    try:
+        with request.urlopen(req, timeout=10) as resp:
+            body = json.load(resp)
+    except error.HTTPError as exc:
+        print("crypto error:", method, exc.code, exc.read()[:300])
+        return None
+    return body.get("result") if body.get("ok") else None
+
+
+def crypto_invoice(chat_id, user_id, key):
+    title, _, _ = PLANS[key]
+    inv = crypto_call("createInvoice", {
+        "asset": "USDT",
+        "amount": str(CRYPTO_PRICES[key]),
+        "description": f"VPN: {title}",
+        "payload": f"{user_id}:{key}",
+        "expires_in": 3600,
+    })
+    if not inv:
+        send(chat_id, "Не удалось создать счёт в Crypto Pay. Попробуйте позже.", back_markup())
+        return
+    markup = {"inline_keyboard": [
+        [{"text": f"Оплатить {CRYPTO_PRICES[key]} USDT", "url": inv["bot_invoice_url"]}],
+        [{"text": "Я оплатил, проверить", "callback_data": f"check:{inv['invoice_id']}:{key}"}],
+    ]}
+    send(chat_id, f"Счёт на «{title}»: {CRYPTO_PRICES[key]} USDT. Оплатите по кнопке и нажмите «Я оплатил».", markup)
+
+
+def crypto_check(chat_id, user_id, invoice_id, key):
+    result = crypto_call("getInvoices", {"invoice_ids": str(invoice_id)})
+    items = (result or {}).get("items", [])
+    if not items or items[0].get("status") != "paid":
+        send(chat_id, "Оплата пока не найдена. Подождите минуту и нажмите «Я оплатил» ещё раз.", back_markup())
+        return
+    # Защита: счёт должен принадлежать этому пользователю и этому тарифу
+    if items[0].get("payload") != f"{user_id}:{key}":
+        send(chat_id, "Этот счёт не относится к вашему аккаунту.", back_markup())
+        return
+    if not db.mark_invoice(invoice_id):
+        send(chat_id, "Эта оплата уже учтена.", back_markup())
+        return
+    _, days, _ = PLANS[key]
+    db.extend_paid(user_id, days)
+    send(chat_id, f"Оплата USDT получена. Подписка продлена на {days} дн.", reply_keyboard())
+
+
 def handle_callback(cb):
     call("answerCallbackQuery", {"callback_query_id": cb["id"]})
     msg = cb.get("message") or {}
@@ -204,6 +260,13 @@ def handle_callback(cb):
     name, _, arg = cb.get("data", "").partition(":")
     if name == "buy" and arg in PLANS:
         send_invoice(chat_id, cb["from"]["id"], arg)
+        return
+    if name == "cbuy" and arg in PLANS:
+        crypto_invoice(chat_id, cb["from"]["id"], arg)
+        return
+    if name == "check":
+        invoice_id, _, key = arg.partition(":")
+        crypto_check(chat_id, cb["from"]["id"], invoice_id, key)
         return
     text, markup = screen(name, cb["from"], arg)
     edit_or_send(chat_id, msg.get("message_id"), text, markup)
