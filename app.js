@@ -6,14 +6,6 @@ if (tg) {
     if (tg.setHeaderColor) tg.setHeaderColor("secondary_bg_color");
 }
 
-// Высота страницы = видимая область Telegram, иначе нижняя панель уезжает
-function fitHeight() {
-    const h = (tg && tg.viewportStableHeight) ? tg.viewportStableHeight : window.innerHeight;
-    document.body.style.height = h + "px";
-}
-fitHeight();
-window.addEventListener("resize", fitHeight);
-if (tg && typeof tg.onEvent === "function") tg.onEvent("viewportChanged", fitHeight);
 
 const $ = (id) => document.getElementById(id);
 const BOT = "https://t.me/SupplineVPNbot";
