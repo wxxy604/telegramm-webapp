@@ -1,7 +1,12 @@
 import json
 import os
+import sys
+import time
 from http.server import BaseHTTPRequestHandler
 from urllib import error, request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import db  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
@@ -63,43 +68,58 @@ def menu_markup():
     return {"inline_keyboard": rows}
 
 
+def trial_status(user):
+    left = user.get("trial_until", 0) - int(time.time())
+    if left <= 0:
+        return "нет"
+    days = left // 86400 + (1 if left % 86400 else 0)
+    return f"активен, осталось {days} дн."
+
+
 def screen(name, user, arg=""):
     first = user.get("first_name", "")
+    uid = user.get("id")
+    record = db.get_user(uid) or {}
     if name == "profile":
         username = f"@{user['username']}" if user.get("username") else "не задан"
         text = (
-            f"Профиль\n\nID: {user.get('id')}\nИмя: {first}\nUsername: {username}\n\n"
-            "Подписка: не активна\nУстройств: 0 из 3"
+            f"Профиль\n\nID: {uid}\nИмя: {first}\nUsername: {username}\n\n"
+            f"Пробный период: {trial_status(record)}\n"
+            f"Приглашено друзей: {record.get('invited', 0)}"
         )
         return text, back_markup()
     if name == "subscription":
         rows = [[{"text": f"{title} · {price} ₽", "callback_data": f"plan:{key}"}] for key, (title, price) in PLANS.items()]
         rows.append([{"text": "⬅ В меню", "callback_data": "menu"}])
-        return "Подписка: активной подписки нет.\n\nВыберите тариф:", {"inline_keyboard": rows}
+        return f"Пробный период: {trial_status(record)}\n\nВыберите тариф:", {"inline_keyboard": rows}
     if name == "plan":
         if arg not in PLANS:
             return "Тариф не найден.", back_markup()
         title, price = PLANS[arg]
         text = (
             f"Тариф «{title}» — {price} ₽\n\n"
-            "Оплата пока не подключена, поэтому подписка не активируется автоматически. "
-            "Когда подключим платёжный сервис, здесь появится кнопка оплаты."
+            "Оплата пока не подключена, подписка не активируется автоматически."
         )
         return text, back_markup()
     if name == "keys":
-        return "Ключи\n\nКлючи выдаются после активации подписки. Сейчас подписки нет.", back_markup()
+        return "Ключи\n\nКлючи выдаются после активации подписки или пробного периода. Сейчас ключей нет.", back_markup()
     if name == "devices":
-        return "Устройства\n\nПодключено: 0 из 3.\nДобавление устройств появится после активации подписки.", back_markup()
+        return "Устройства\n\nПодключено: 0 из 3.", back_markup()
     if name == "referral":
-        link = f"https://t.me/{get_bot_username()}?start=ref{user.get('id')}"
-        return f"Реферальная ссылка:\n{link}\n\nОтправьте её друзьям, чтобы пригласить их.", back_markup()
+        link = f"https://t.me/{get_bot_username()}?start=ref{uid}"
+        text = (
+            f"Реферальная программа\n\n"
+            f"Ваша ссылка:\n{link}\n\n"
+            "Друг получает 3 дня пробного периода, вы тоже получаете 3 дня за каждого друга.\n"
+            f"Приглашено: {record.get('invited', 0)}"
+        )
+        return text, back_markup()
     if name == "help":
         text = (
             "Помощь\n\n"
             "/start — начать работу\n"
-            "/menu — открыть главное меню\n"
-            "/help — эта справка\n\n"
-            "Кнопки внизу экрана открывают профиль, подписку и мини приложение."
+            "/menu — главное меню\n"
+            "/help — эта справка"
         )
         return text, back_markup()
     return f"Главное меню, {first}:", menu_markup()
@@ -129,15 +149,32 @@ def handle_callback(cb):
     edit_or_send(chat_id, msg.get("message_id"), text, markup)
 
 
+def handle_start(message, user, payload):
+    chat_id = message["chat"]["id"]
+    if db.get_user(user["id"]) is None:
+        referrer = payload[3:] if payload.startswith("ref") and payload[3:].isdigit() else None
+        if referrer and db.register_referral(user["id"], referrer):
+            call("sendMessage", {"chat_id": int(referrer), "text": "По вашей ссылке зарегистрировался новый пользователь. Вам начислено 3 дня пробного периода."})
+            note = "Вы пришли по приглашению: вам начислено 3 дня пробного периода."
+        else:
+            db.save_user(user["id"], {"id": user["id"], "trial_until": 0, "referrer": None, "invited": 0})
+            db.add_trial_days(user["id"], 3)
+            note = "Вам начислено 3 дня бесплатного пробного периода."
+    else:
+        note = "С возвращением!"
+
+    send(chat_id, f"Привет, {user.get('first_name', '')}! {note}", reply_keyboard())
+    body, markup = screen("menu", user)
+    send(chat_id, body, markup)
+
+
 def handle_message(message):
     chat_id = message["chat"]["id"]
     user = message.get("from", {})
     text = message.get("text", "").strip()
 
     if text.startswith("/start"):
-        send(chat_id, f"Привет, {user.get('first_name', '')}! Кабинет готов.", reply_keyboard())
-        body, markup = screen("menu", user)
-        send(chat_id, body, markup)
+        handle_start(message, user, text[6:].strip())
     elif text in ("/menu", "/help"):
         name = "help" if text == "/help" else "menu"
         body, markup = screen(name, user)
