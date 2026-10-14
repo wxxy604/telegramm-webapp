@@ -104,3 +104,12 @@ nav button.active { color: var(--text); background: var(--line); }
     transition: opacity 0.2s ease;
 }
 .toast.show { opacity: 1; }
+body[data-theme="light"] {
+    --bg: #f5f7f5;
+    --text: #111412;
+    --hint: #6b736e;
+    --card: rgba(0, 0, 0, 0.05);
+    --line: rgba(0, 0, 0, 0.10);
+}
+.switch.on::after { background: #fff; }
+.badge.warn { color: #ff9f0a; }
