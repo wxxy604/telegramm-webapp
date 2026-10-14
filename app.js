@@ -33,12 +33,14 @@ function showTab(tab) {
     haptic();
 }
 
-function requireTelegram() {
-    if (!tg || !tg.initData) {
-        toast("Откройте приложение из Telegram");
-        return false;
+// Открывает ссылку на бота. Внутри Telegram — через его API, в браузере — обычной ссылкой.
+function openBot(link) {
+    if (tg && typeof tg.openTelegramLink === "function") {
+        tg.openTelegramLink(link);
+        setTimeout(() => tg.close(), 300);
+    } else {
+        window.location.href = link;
     }
-    return true;
 }
 
 function renderSettings() {
@@ -68,19 +70,11 @@ document.querySelectorAll("[data-toggle]").forEach(el => {
 
 // Оплата: открываем бота по deep link, там создаётся счёт
 document.querySelectorAll("[data-plan]").forEach(btn => {
-    btn.addEventListener("click", () => {
-        if (!requireTelegram()) return;
-        tg.openTelegramLink(BOT + "?start=buy_" + btn.dataset.plan);
-        tg.close();
-    });
+    btn.addEventListener("click", () => openBot(BOT + "?start=buy_" + btn.dataset.plan));
 });
 
 document.querySelectorAll("[data-crypto]").forEach(btn => {
-    btn.addEventListener("click", () => {
-        if (!requireTelegram()) return;
-        tg.openTelegramLink(BOT + "?start=cbuy_" + btn.dataset.crypto);
-        tg.close();
-    });
+    btn.addEventListener("click", () => openBot(BOT + "?start=cbuy_" + btn.dataset.crypto));
 });
 
 const user = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
