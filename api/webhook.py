@@ -234,7 +234,11 @@ def handle_message(message):
     text = message.get("text", "").strip()
 
     if text.startswith("/start"):
-        handle_start(message, user, text[6:].strip())
+        payload = text[6:].strip()
+        if payload.startswith("buy_") and payload[4:] in PLANS:
+            send_invoice(chat_id, user["id"], payload[4:])
+        else:
+            handle_start(message, user, payload)
     elif text in ("/menu", "/help"):
         name = "help" if text == "/help" else "menu"
         body, markup = screen(name, user)
