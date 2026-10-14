@@ -181,6 +181,20 @@ def handle_successful_payment(message):
     send(message["chat"]["id"], f"Оплата прошла. Подписка продлена на {days} дн. Проверьте статус в разделе «Подписка».", reply_keyboard())
 
 
+def handle_web_app_data(message):
+    chat_id = message["chat"]["id"]
+    user_id = message["from"]["id"]
+    try:
+        data = json.loads(message["web_app_data"]["data"])
+    except (ValueError, KeyError):
+        send(chat_id, "Не удалось прочитать выбор тарифа.", reply_keyboard())
+        return
+    if data.get("action") == "buy" and data.get("plan") in PLANS:
+        send_invoice(chat_id, user_id, data["plan"])
+    else:
+        send(chat_id, "Тариф не найден.", reply_keyboard())
+
+
 def handle_callback(cb):
     call("answerCallbackQuery", {"callback_query_id": cb["id"]})
     msg = cb.get("message") or {}
@@ -253,6 +267,8 @@ class handler(BaseHTTPRequestHandler):
                 handle_callback(update["callback_query"])
             elif "message" in update and "successful_payment" in update["message"]:
                 handle_successful_payment(update["message"])
+            elif "message" in update and "web_app_data" in update["message"]:
+                handle_web_app_data(update["message"])
             elif "message" in update and "text" in update["message"]:
                 handle_message(update["message"])
         except Exception as exc:
