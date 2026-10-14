@@ -29,8 +29,9 @@ document.querySelectorAll("[data-plan]").forEach(btn => {
             toast("Откройте приложение из Telegram");
             return;
         }
-        // Приложение закроется, а бот получит выбор тарифа и выставит счёт
-        tg.sendData(JSON.stringify({ action: "buy", plan: plan }));
+        // Открываем чат с ботом по deep link: бот по payload выставит счёт
+        tg.openTelegramLink("https://t.me/SupplineVPNbot?start=buy_" + plan);
+        tg.close();
     });
 });
 
