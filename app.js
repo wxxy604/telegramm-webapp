@@ -22,6 +22,18 @@ document.querySelectorAll("nav button").forEach(btn => {
     btn.addEventListener("click", () => showTab(btn.dataset.tab));
 });
 
+document.querySelectorAll("[data-crypto]").forEach(btn => {
+    btn.addEventListener("click", () => {
+        if (!tg || !tg.initData) {
+            toast("Откройте приложение из Telegram");
+            return;
+        }
+        // Бот по payload cbuy_<план> создаст счёт Crypto Pay в USDT
+        tg.openTelegramLink("https://t.me/SupplineVPNbot?start=cbuy_" + btn.dataset.crypto);
+        tg.close();
+    });
+});
+
 document.querySelectorAll("[data-plan]").forEach(btn => {
     btn.addEventListener("click", () => {
         const plan = btn.dataset.plan;
