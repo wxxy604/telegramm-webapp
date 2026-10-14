@@ -1,5 +1,10 @@
 const tg = window.Telegram ? window.Telegram.WebApp : null;
-if (tg) { tg.ready(); tg.expand(); }
+if (tg) {
+    tg.ready();
+    tg.expand();
+    if (typeof tg.disableVerticalSwipes === "function") tg.disableVerticalSwipes();
+    if (tg.setHeaderColor) tg.setHeaderColor("secondary_bg_color");
+}
 
 const $ = (id) => document.getElementById(id);
 const BOT = "https://t.me/SupplineVPNbot";
