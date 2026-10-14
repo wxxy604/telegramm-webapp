@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Кабинет</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="brand">Кабинет</div>
+        <div class="avatar" id="avatar">?</div>
+    </header>
+
+    <section class="screen active" id="screen-keys">
+        <div class="title">Ключи</div>
+        <div class="subtitle">Подключение для ваших устройств</div>
+        <div class="card">
+            <div class="row">
+                <div>
+                    <div>Основной ключ</div>
+                    <div class="muted">Протокол: VLESS</div>
+                </div>
+                <span class="badge off" id="key-status">Не активен</span>
+            </div>
+            <div class="key-value" id="key-value"></div>
+            <button class="btn" data-action="copy-key">Скопировать ключ</button>
+            <button class="btn ghost" data-action="toggle-key" id="key-toggle">Включить</button>
+        </div>
+        <div class="section-label">Дополнительно</div>
+        <div class="card">
+            <div class="row">
+                <div>
+                    <div>Обновить ключ</div>
+                    <div class="muted">Старый ключ перестанет работать</div>
+                </div>
+                <button class="btn small ghost" data-action="rotate-key">Обновить</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="screen" id="screen-devices">
+        <div class="title">Устройства</div>
+        <div class="subtitle">Подключено: <span id="device-count">0</span> из 3</div>
+        <div id="device-list"></div>
+        <button class="btn ghost" data-action="add-device">Добавить устройство</button>
+    </section>
+
+    <section class="screen" id="screen-subscription">
+        <div class="title">Подписка</div>
+        <div class="subtitle">Управление тарифом</div>
+        <div class="card">
+            <div class="row">
+                <div>
+                    <div id="plan-name"></div>
+                    <div class="muted" id="plan-expire"></div>
+                </div>
+                <span class="badge warn" id="plan-badge"></span>
+            </div>
+            <div class="progress"><div id="plan-progress" style="width: 0%"></div></div>
+        </div>
+        <div class="section-label">Тарифы</div>
+        <div class="card">
+            <ul class="plan-list">
+                <li><span>1 месяц</span><span>199 ₽</span></li>
+                <li><span>3 месяца</span><span>499 ₽</span></li>
+                <li><span>12 месяцев</span><span>1 490 ₽</span></li>
+            </ul>
+            <button class="btn" data-action="buy">Выбрать тариф</button>
+        </div>
+    </section>
+
+    <section class="screen" id="screen-profile">
+        <div class="title">Профиль</div>
+        <div class="subtitle">Ваши данные</div>
+        <div class="card"><div class="row"><span class="muted">Имя</span><span id="p-name">—</span></div></div>
+        <div class="card"><div class="row"><span class="muted">ID</span><span id="p-id">—</span></div></div>
+        <div class="card">
+            <div class="row">
+                <div>
+                    <div>Уведомления</div>
+                    <div class="muted">Сообщать об окончании подписки</div>
+                </div>
+                <div class="switch" data-action="toggle-notify" id="notify-switch"></div>
+            </div>
+        </div>
+    </section>
+
+    <nav>
+        <button class="active" data-tab="keys">Ключи</button>
+        <button data-tab="devices">Устройства</button>
+        <button data-tab="subscription">Подписка</button>
+        <button data-tab="profile">Профиль</button>
+    </nav>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
