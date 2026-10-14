@@ -139,6 +139,19 @@ nav button {
 nav button .nav-ico { font-size: 17px; }
 nav button.active { color: var(--accent); background: var(--accent-soft); }
 
+.tariff {
+    background: var(--surface); border-radius: 18px;
+    padding: 16px; margin-bottom: 10px;
+}
+.tariff-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 14px;
+}
+.tariff-price { font-size: 18px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.tariff-actions { display: flex; flex-direction: column; gap: 8px; }
+.tariff-actions .btn { margin-top: 0; padding: 12px; font-size: 14px; }
+.muted-note { color: var(--hint); font-size: 12px; text-align: center; margin-top: 8px; }
+
 .toast {
     position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
     background: var(--text); color: var(--bg); padding: 10px 16px;

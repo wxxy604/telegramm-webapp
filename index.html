@@ -14,6 +14,7 @@
     </div>
 
     <main class="content">
+
     <section class="screen active" id="screen-home">
         <div class="title" id="home-greet">Привет!</div>
         <div class="subtitle">Ваш доступ и подписка</div>
@@ -40,27 +41,50 @@
         <div class="subtitle">Ключи появятся после активации подписки</div>
         <div class="group"><div class="empty">Ключей пока нет</div></div>
     </section>
-
-    <section class="screen" id="screen-devices">
-        <div class="title">Устройства</div>
-        <div class="subtitle">Подключено: <span id="device-count">0</span> из 3</div>
-        <div class="group"><div class="empty">Подключённых устройств пока нет</div></div>
-    </section>
-
     <section class="screen" id="screen-subscription">
         <div class="title">Подписка</div>
-        <div class="subtitle">Выберите тариф</div>
-        <div class="group">
-            <div class="plan">
-                <div><div class="plan-name">1 месяц</div><div class="plan-sub">Полный доступ</div></div>
-                <div class="plan-btns"><button class="pill" data-plan="1m">150 ⭐</button><button class="pill usdt" data-crypto="1m">2 USDT</button></div>
+        <div class="subtitle">Выберите тариф и способ оплаты</div>
+        <div class="status">
+            <div class="status-label">Ваш статус</div>
+            <div class="status-value" id="sub-status">Не активна</div>
+        </div>
+
+        <div class="tariff">
+            <div class="tariff-head">
+                <div><div class="plan-name">1 месяц</div><div class="plan-sub">30 дней полного доступа</div></div>
+                <div class="tariff-price">150 ⭐</div>
             </div>
-            <div class="plan">
-                <div><div class="plan-name">3 месяца</div><div class="plan-sub">Выгоднее на 10%</div></div>
-                <div class="plan-btns"><button class="pill" data-plan="3m">400 ⭐</button><button class="pill usdt" data-crypto="3m">5 USDT</button></div>
+            <div class="tariff-actions">
+                <button class="btn" data-plan="1m">Оплатить звёздами</button>
+                <button class="btn ghost" data-crypto="1m">Оплатить 2 USDT</button>
             </div>
-            <div class="plan">
-                <div><div class="plan-name">12 месяцев</div><div class="plan-sub">Максимальная выгода</div></div>
+        </div>
+
+        <div class="tariff">
+            <div class="tariff-head">
+                <div><div class="plan-name">3 месяца</div><div class="plan-sub">90 дней, выгоднее на 10%</div></div>
+                <div class="tariff-price">400 ⭐</div>
+            </div>
+            <div class="tariff-actions">
+                <button class="btn" data-plan="3m">Оплатить звёздами</button>
+                <button class="btn ghost" data-crypto="3m">Оплатить 5 USDT</button>
+            </div>
+        </div>
+
+        <div class="tariff">
+            <div class="tariff-head">
+                <div><div class="plan-name">12 месяцев</div><div class="plan-sub">365 дней, максимальная выгода</div></div>
+                <div class="tariff-price">1 400 ⭐</div>
+            </div>
+            <div class="tariff-actions">
+                <button class="btn" data-plan="12m">Оплатить звёздами</button>
+                <button class="btn ghost" data-crypto="12m">Оплатить 18 USDT</button>
+            </div>
+        </div>
+
+        <div class="muted-note">Оплата откроется в чате с ботом.</div>
+    </section>
+
     <section class="screen" id="screen-settings">
         <div class="title">Настройки</div>
         <div class="subtitle">Параметры приложения</div>
@@ -122,9 +146,10 @@
 </body>
 </html>
 
-                <div class="plan-btns"><button class="pill" data-plan="12m">1 400 ⭐</button><button class="pill usdt" data-crypto="12m">18 USDT</button></div>
-            </div>
-        </div>
-        <div class="subtitle" style="margin-top:10px">Оплата откроется в чате с ботом.</div>
+
+    <section class="screen" id="screen-devices">
+        <div class="title">Устройства</div>
+        <div class="subtitle">Подключено: <span id="device-count">0</span> из 3</div>
+        <div class="group"><div class="empty">Подключённых устройств пока нет</div></div>
     </section>
 
