@@ -39,6 +39,18 @@ def add_trial_days(user_id, days):
     return user
 
 
+def extend_paid(user_id, days):
+    """Продлевает платную подписку на days дней. Возвращает обновлённого пользователя."""
+    import time
+
+    user = get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    now = int(time.time())
+    base = max(user.get("paid_until", 0), now)
+    user["paid_until"] = base + days * 86400
+    save_user(user_id, user)
+    return user
+
+
 def register_referral(new_user_id, referrer_id):
     """Регистрирует нового пользователя по реферальной ссылке.
 

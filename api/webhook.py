@@ -17,9 +17,10 @@ BTN_SUBSCRIPTION = "Подписка"
 BTN_APP = "Мини приложение"
 
 PLANS = {
-    "1m": ("1 месяц", 199),
-    "3m": ("3 месяца", 499),
-    "12m": ("12 месяцев", 1490),
+    # key: (название, дни, цена в звёздах Telegram Stars)
+    "1m": ("1 месяц", 30, 150),
+    "3m": ("3 месяца", 90, 400),
+    "12m": ("12 месяцев", 365, 1400),
 }
 
 _bot_username = None
@@ -68,6 +69,14 @@ def menu_markup():
     return {"inline_keyboard": rows}
 
 
+def paid_status(user):
+    left = user.get("paid_until", 0) - int(time.time())
+    if left <= 0:
+        return "не активна"
+    days = left // 86400 + (1 if left % 86400 else 0)
+    return f"активна, осталось {days} дн."
+
+
 def trial_status(user):
     left = user.get("trial_until", 0) - int(time.time())
     if left <= 0:
@@ -89,18 +98,19 @@ def screen(name, user, arg=""):
         )
         return text, back_markup()
     if name == "subscription":
-        rows = [[{"text": f"{title} · {price} ₽", "callback_data": f"plan:{key}"}] for key, (title, price) in PLANS.items()]
+        rows = [[{"text": f"{title} · {stars} ⭐", "callback_data": f"plan:{key}"}] for key, (title, _, stars) in PLANS.items()]
         rows.append([{"text": "⬅ В меню", "callback_data": "menu"}])
-        return f"Пробный период: {trial_status(record)}\n\nВыберите тариф:", {"inline_keyboard": rows}
+        paid = paid_status(record)
+        return f"Подписка: {paid}\nПробный период: {trial_status(record)}\n\nВыберите тариф:", {"inline_keyboard": rows}
     if name == "plan":
         if arg not in PLANS:
             return "Тариф не найден.", back_markup()
-        title, price = PLANS[arg]
-        text = (
-            f"Тариф «{title}» — {price} ₽\n\n"
-            "Оплата пока не подключена, подписка не активируется автоматически."
-        )
-        return text, back_markup()
+        title, _, stars = PLANS[arg]
+        markup = {"inline_keyboard": [
+            [{"text": f"Оплатить {stars} ⭐", "callback_data": f"buy:{arg}"}],
+            [{"text": "⬅ К тарифам", "callback_data": "subscription"}],
+        ]}
+        return f"Тариф «{title}» — {stars} ⭐\n\nОплата звёздами Telegram внутри бота.", markup
     if name == "keys":
         return "Ключи\n\nКлючи выдаются после активации подписки или пробного периода. Сейчас ключей нет.", back_markup()
     if name == "devices":
@@ -138,6 +148,39 @@ def edit_or_send(chat_id, message_id, text, markup):
     send(chat_id, text, markup)
 
 
+def send_invoice(chat_id, user_id, key):
+    title, days, stars = PLANS[key]
+    call("sendInvoice", {
+        "chat_id": chat_id,
+        "title": f"VPN: {title}",
+        "description": f"Доступ к VPN на {days} дн.",
+        "payload": f"plan:{key}:{user_id}",
+        "provider_token": "",
+        "currency": "XTR",
+        "prices": [{"label": title, "amount": stars}],
+    })
+
+
+def handle_pre_checkout(pcq):
+    # Подтверждаем оплату, если тариф известен
+    payload = pcq.get("invoice_payload", "")
+    ok = payload.startswith("plan:") and payload.split(":")[1] in PLANS
+    call("answerPreCheckoutQuery", {
+        "pre_checkout_query_id": pcq["id"],
+        "ok": ok,
+        "error_message": "" if ok else "Тариф недоступен, попробуйте позже.",
+    })
+
+
+def handle_successful_payment(message):
+    payment = message["successful_payment"]
+    key = payment["invoice_payload"].split(":")[1]
+    user_id = message["from"]["id"]
+    _, days, _ = PLANS[key]
+    db.extend_paid(user_id, days)
+    send(message["chat"]["id"], f"Оплата прошла. Подписка продлена на {days} дн. Проверьте статус в разделе «Подписка».", reply_keyboard())
+
+
 def handle_callback(cb):
     call("answerCallbackQuery", {"callback_query_id": cb["id"]})
     msg = cb.get("message") or {}
@@ -145,6 +188,9 @@ def handle_callback(cb):
     if not chat_id:
         return
     name, _, arg = cb.get("data", "").partition(":")
+    if name == "buy" and arg in PLANS:
+        send_invoice(chat_id, cb["from"]["id"], arg)
+        return
     text, markup = screen(name, cb["from"], arg)
     edit_or_send(chat_id, msg.get("message_id"), text, markup)
 
@@ -201,8 +247,12 @@ class handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         try:
             update = json.loads(self.rfile.read(length) or b"{}")
-            if "callback_query" in update:
+            if "pre_checkout_query" in update:
+                handle_pre_checkout(update["pre_checkout_query"])
+            elif "callback_query" in update:
                 handle_callback(update["callback_query"])
+            elif "message" in update and "successful_payment" in update["message"]:
+                handle_successful_payment(update["message"])
             elif "message" in update and "text" in update["message"]:
                 handle_message(update["message"])
         except Exception as exc:
