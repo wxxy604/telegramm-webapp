@@ -24,7 +24,7 @@ body {
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
-    padding: 12px 14px 110px;
+    padding: 12px 14px 16px;
 }
 .topbar {
     display: flex; align-items: center; justify-content: space-between;
@@ -117,14 +117,11 @@ body {
 .empty { text-align: center; color: var(--hint); padding: 30px 16px; font-size: 14px; }
 
 nav {
-    position: fixed; left: 12px; right: 12px;
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    z-index: 100;
+    position: sticky; bottom: 12px;
+    margin: 16px 0 0;
     display: flex; justify-content: space-around; padding: 6px;
     background: var(--surface); border-radius: 20px;
     box-shadow: 0 8px 30px rgba(0,0,0,.35);
-    transform: translateZ(0);
-    -webkit-transform: translateZ(0);
 }
 nav button {
     flex: 1; background: none; border: none; color: var(--hint);
