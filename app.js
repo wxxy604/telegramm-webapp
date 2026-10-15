@@ -19,7 +19,7 @@ const PRICES = {
     stars:  { "1m": "150 ⭐", "3m": "400 ⭐", "12m": "1 400 ⭐" },
     sbp:    { "1m": "199 ₽", "3m": "499 ₽", "12m": "1 490 ₽" },
 };
-const METHOD_NAMES = { crypto: "Криптобот (USDT)", stars: "Звёзды Telegram", sbp: "СБП" };
+const METHOD_NAMES = { crypto: "CryptoBot (USDT)", stars: "Звёзды Telegram", sbp: "СБП" };
 
 function saveSettings() {
     localStorage.setItem("settings", JSON.stringify(settings));
