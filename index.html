@@ -3,33 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Кабинет</title>
+    <title>SupplineVPN</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="topbar">
-        <div class="brand">Кабинет</div>
-        <div class="avatar" id="avatar">?</div>
-    </div>
+    <header class="topbar">
+        <div class="brand">SupplineVPN</div>
+        <div class="avatar" id="avatar"><img id="avatar-img" alt="" hidden><span id="avatar-letter">?</span></div>
+    </header>
 
     <main class="content">
 
     <section class="screen active" id="screen-home">
         <div class="title" id="home-greet">Привет!</div>
-        <div class="subtitle">Ваш доступ и подписка</div>
+        <div class="subtitle">Ваш доступ и баланс</div>
         <div class="status">
             <div class="status-label">Статус подписки</div>
             <div class="status-value" id="home-sub">Не активна</div>
         </div>
+        <div class="balance">
+            <div class="status-label">Баланс</div>
+            <div class="balance-value" id="home-balance">0 ₽</div>
+        </div>
         <div class="group">
-            <div class="item" data-go="subscription">
-                <div class="icon">⭐</div>
-                <div class="item-body"><div class="item-title">Продлить подписку</div><div class="item-sub">Оплата звёздами или USDT</div></div>
+            <div class="item" data-go="pay">
+                <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z"/></svg></div>
+                <div class="item-body"><div class="item-title">Продлить подписку</div><div class="item-sub">Оплата в выбранном способе</div></div>
                 <div class="chev">›</div>
             </div>
             <div class="item" data-go="keys">
-                <div class="icon">🔑</div>
+                <div class="icon"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></svg></div>
                 <div class="item-body"><div class="item-title">Мои ключи</div><div class="item-sub">Подключение для устройств</div></div>
                 <div class="chev">›</div>
             </div>
@@ -37,52 +41,43 @@
     </section>
 
     <section class="screen" id="screen-keys">
-        <div class="title">Ключи</div>
-        <div class="subtitle">Ключи появятся после активации подписки</div>
-        <div class="group"><div class="empty">Ключей пока нет</div></div>
-    </section>
-    <section class="screen" id="screen-subscription">
-        <div class="title">Подписка</div>
-        <div class="subtitle">Выберите тариф и способ оплаты</div>
-        <div class="status">
-            <div class="status-label">Ваш статус</div>
-            <div class="status-value" id="sub-status">Не активна</div>
+    <section class="screen" id="screen-pay">
+        <div class="title">Оплата</div>
+        <div class="subtitle">Выберите способ оплаты и тариф</div>
+
+        <div class="select" id="method-select">
+            <button class="select-head" id="method-toggle" type="button">
+                <span id="method-label">Криптобот (USDT)</span>
+                <span class="select-caret">▾</span>
+            </button>
+            <div class="select-list" id="method-list">
+                <button type="button" class="select-opt" data-method="crypto">Криптобот (USDT)</button>
+                <button type="button" class="select-opt" data-method="stars">Звёзды Telegram</button>
+                <button type="button" class="select-opt" data-method="sbp">СБП</button>
+            </div>
         </div>
 
         <div class="tariff">
             <div class="tariff-head">
                 <div><div class="plan-name">1 месяц</div><div class="plan-sub">30 дней полного доступа</div></div>
-                <div class="tariff-price">150 ⭐</div>
-            </div>
-            <div class="tariff-actions">
-                <button class="btn" data-plan="1m">Оплатить звёздами</button>
-                <button class="btn ghost" data-crypto="1m">Оплатить 2 USDT</button>
+                <div class="tariff-price" data-price="1m"></div>
             </div>
         </div>
-
         <div class="tariff">
             <div class="tariff-head">
                 <div><div class="plan-name">3 месяца</div><div class="plan-sub">90 дней, выгоднее на 10%</div></div>
-                <div class="tariff-price">400 ⭐</div>
-            </div>
-            <div class="tariff-actions">
-                <button class="btn" data-plan="3m">Оплатить звёздами</button>
-                <button class="btn ghost" data-crypto="3m">Оплатить 5 USDT</button>
+                <div class="tariff-price" data-price="3m"></div>
             </div>
         </div>
-
         <div class="tariff">
             <div class="tariff-head">
                 <div><div class="plan-name">12 месяцев</div><div class="plan-sub">365 дней, максимальная выгода</div></div>
-                <div class="tariff-price">1 400 ⭐</div>
-            </div>
-            <div class="tariff-actions">
-                <button class="btn" data-plan="12m">Оплатить звёздами</button>
-                <button class="btn ghost" data-crypto="12m">Оплатить 18 USDT</button>
+                <div class="tariff-price" data-price="12m"></div>
             </div>
         </div>
 
-        <div class="muted-note">Оплата откроется в чате с ботом.</div>
+        <button class="btn" id="pay-btn" type="button">Перейти к оплате</button>
+        <div class="muted-note" id="pay-note">Оплата откроется в чате с ботом.</div>
     </section>
 
     <section class="screen" id="screen-settings">
@@ -92,17 +87,12 @@
         <div class="section-label">Функции</div>
         <div class="group">
             <div class="item" data-toggle="notify">
-                <div class="icon">🔔</div>
+                <div class="icon"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0112 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 004 0"/></svg></div>
                 <div class="item-body"><div class="item-title">Уведомления</div><div class="item-sub">Напоминать об окончании подписки</div></div>
                 <div class="switch" data-switch="notify"></div>
             </div>
-            <div class="item" data-toggle="autorenew">
-                <div class="icon">🔄</div>
-                <div class="item-body"><div class="item-title">Автопродление</div><div class="item-sub">Продлевать подписку автоматически</div></div>
-                <div class="switch" data-switch="autorenew"></div>
-            </div>
             <div class="item" data-toggle="theme">
-                <div class="icon">🌗</div>
+                <div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 010 18z"/></svg></div>
                 <div class="item-body"><div class="item-title">Светлая тема</div><div class="item-sub">Переключить оформление</div></div>
                 <div class="switch" data-switch="theme"></div>
             </div>
@@ -110,21 +100,14 @@
 
         <div class="section-label">Аккаунт</div>
         <div class="group">
-            <div class="item"><div class="icon">👤</div><div class="item-body"><div class="item-title">Имя</div></div><div class="item-end" id="p-name">—</div></div>
-            <div class="item"><div class="icon">🆔</div><div class="item-body"><div class="item-title">ID</div></div><div class="item-end" id="p-id">—</div></div>
+            <div class="item"><div class="item-body"><div class="item-title">Имя</div></div><div class="item-end" id="p-name">—</div></div>
+            <div class="item"><div class="item-body"><div class="item-title">ID</div></div><div class="item-end" id="p-id">—</div></div>
         </div>
 
         <div class="section-label">Документы</div>
         <div class="group">
-            <div class="item" data-doc="terms"><div class="icon">📜</div><div class="item-body"><div class="item-title">Пользовательское соглашение</div></div><div class="chev">›</div></div>
-            <div class="item" data-doc="privacy"><div class="icon">🔒</div><div class="item-body"><div class="item-title">Политика конфиденциальности</div></div><div class="chev">›</div></div>
-        </div>
-
-        <div class="section-label">Информация</div>
-        <div class="group">
-            <div class="item" data-go="help"><div class="icon">ℹ️</div><div class="item-body"><div class="item-title">О приложении</div></div><div class="chev">›</div></div>
-            <div class="item" data-go="help"><div class="icon">❓</div><div class="item-body"><div class="item-title">Помощь</div></div><div class="chev">›</div></div>
-            <div class="item" data-go="help"><div class="icon">🎧</div><div class="item-body"><div class="item-title">Поддержка</div><div class="item-sub">Напишите в чат с ботом</div></div><div class="chev">›</div></div>
+            <div class="item" data-doc="terms"><div class="item-body"><div class="item-title">Пользовательское соглашение</div></div><div class="chev">›</div></div>
+            <div class="item" data-doc="privacy"><div class="item-body"><div class="item-title">Политика конфиденциальности</div></div><div class="chev">›</div></div>
         </div>
     </section>
 
@@ -134,23 +117,14 @@
         <div class="group"><div class="doc-text" id="doc-text"></div></div>
     </section>
 
-    <section class="screen" id="screen-help">
-        <div class="title">Помощь</div>
-        <div class="subtitle">Частые вопросы</div>
-        <div class="group">
-            <div class="item"><div class="item-body"><div class="item-title">Как подключить VPN?</div><div class="item-sub">После оплаты ключ появится в разделе «Ключи». Вставьте его в приложение VPN.</div></div></div>
-            <div class="item"><div class="item-body"><div class="item-title">Что такое пробный период?</div><div class="item-sub">3 дня бесплатно для новых пользователей. За друга по вашей ссылке тоже 3 дня.</div></div></div>
-        </div>
-    </section>
-
     </main>
 
-    <nav>
-        <button class="active" data-tab="home"><span class="nav-ico">🏠</span>Главная</button>
-        <button data-tab="keys"><span class="nav-ico">🔑</span>Ключи</button>
-        <button data-tab="devices"><span class="nav-ico">📱</span>Устройства</button>
-        <button data-tab="subscription"><span class="nav-ico">⭐</span>Подписка</button>
-        <button data-tab="settings"><span class="nav-ico">⚙️</span>Настройки</button>
+    <nav class="tabbar">
+        <button class="active" data-tab="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1z"/></svg><span>Главная</span></button>
+        <button data-tab="keys"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></svg><span>Ключи</span></button>
+        <button data-tab="devices"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg><span>Устройства</span></button>
+        <button data-tab="pay"><svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z"/></svg><span>Оплата</span></button>
+        <button data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Настройки</span></button>
     </nav>
 
     <div class="toast" id="toast"></div>
@@ -160,6 +134,10 @@
 </body>
 </html>
 
+        <div class="title">Ключи</div>
+        <div class="subtitle">Ключи появятся после активации подписки</div>
+        <div class="group"><div class="empty">Ключей пока нет</div></div>
+    </section>
 
     <section class="screen" id="screen-devices">
         <div class="title">Устройства</div>
