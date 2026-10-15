@@ -513,7 +513,7 @@ def handle_message(message):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         # Данные для мини приложения: статус подписки и пробного периода (без секретов)
-        if self.path.startswith("/api/me"):
+        if "uid=" in self.path:
             self._me()
             return
         self._reply(200, "bot is alive")
