@@ -152,18 +152,37 @@ WELCOME_TEXT = (
 
 def menu_markup():
     rows = [
-        [{"text": "Моя подписка", "callback_data": "subscription", "style": "primary"}],
-        [{"text": "Купить", "callback_data": "buy", "style": "success"}],
-        [{"text": "Функции", "callback_data": "features"}, {"text": "Реф. система", "callback_data": "referral"}],
-        [{"text": "О сервисе", "callback_data": "about"}],
+        [{"text": "💎 Купить", "callback_data": "buy", "style": "success"}],
+        [{"text": "🔑 Мои ключи", "callback_data": "keys"}, {"text": "🎁 Реф. система", "callback_data": "referral"}],
+        [{"text": "💬 Поддержка", "callback_data": "support"}],
     ]
     if WEBAPP_URL:
-        rows[-1].append({"text": "Mini app", "web_app": {"url": WEBAPP_URL}})
-    else:
-        rows[-1].append({"text": "Mini app", "callback_data": "about"})
-    rows.append([{"text": "FAQ", "callback_data": "help"}, {"text": "Поддержка", "callback_data": "support"}])
-    rows.append([{"text": "Документы", "callback_data": "docs"}])
+        rows.append([{"text": "🚀 Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
     return {"inline_keyboard": rows}
+
+
+def support_markup():
+    return {"inline_keyboard": [
+        [{"text": "❓ FAQ", "callback_data": "help"}, {"text": "ℹ️ О сервисе", "callback_data": "about"}],
+        [{"text": "⚡ Функции", "callback_data": "features"}, {"text": "📄 Документы", "callback_data": "docs"}],
+        [{"text": "◀️ Назад в меню", "callback_data": "menu"}],
+    ]}
+
+
+def welcome_text(user, record):
+    """Приветствие: преимущества VPN и статус подписки сразу, без лишних нажатий."""
+    first = user.get("first_name", "")
+    return (
+        f"Привет, {first}! Добро пожаловать в SupplineVPN\n\n"
+        "Что вы получаете:\n"
+        "• Быстрое и стабильное подключение\n"
+        "• Защиту трафика в публичных сетях\n"
+        "• До 3 устройств на одной подписке\n"
+        "• Пробный период 3 дня бесплатно\n"
+        "• Оплата звёздами Telegram, USDT или СБП\n\n"
+        f"Подписка: {paid_status(record)}\n"
+        f"Пробный период: {trial_status(record)}"
+    )
 
 
 def paid_status(user):
@@ -270,7 +289,7 @@ def screen(name, user, arg=""):
         return text, back_markup()
     if name == "support":
         text = "Поддержка\n\nПо всем вопросам напишите сюда, в этот чат. Мы ответим как можно скорее."
-        return text, back_markup()
+        return text, support_markup()
     if name == "help":
         text = (
             "Помощь\n\n"
@@ -447,8 +466,9 @@ def handle_start(message, user, payload):
     else:
         note = "С возвращением!"
 
-    # Только меню: без лишнего приветствия. Нижняя клавиатура снимается.
-    send(chat_id, WELCOME_TEXT, menu_markup())
+    # Приветствие со статусом и преимуществами сразу, нижняя клавиатура снимается
+    record = db.get_user(user["id"]) or {}
+    send(chat_id, welcome_text(user, record), menu_markup())
     call("sendMessage", {"chat_id": chat_id, "text": "\u200b", "reply_markup": {"remove_keyboard": True}})
 
 
