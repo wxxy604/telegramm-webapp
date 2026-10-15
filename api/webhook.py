@@ -143,15 +143,25 @@ def back_markup():
     return {"inline_keyboard": [[{"text": "◀️ Назад в меню", "callback_data": "menu"}]]}
 
 
+WELCOME_TEXT = (
+    "Добро пожаловать в SupplineVPN!\n\n"
+    "Здесь вы оформляете доступ, получаете ключи и управляете подпиской. "
+    "Выберите раздел ниже."
+)
+
+
 def menu_markup():
     rows = [
-        [{"text": "👤 Профиль", "callback_data": "profile"}, {"text": "💎 Подписка", "callback_data": "subscription"}],
-        [{"text": "🔑 Ключи", "callback_data": "keys"}, {"text": "📱 Устройства", "callback_data": "devices"}],
-        [{"text": "🎁 Рефералы", "callback_data": "referral"}, {"text": "💬 Помощь", "callback_data": "help"}],
-        [{"text": "📄 Документы", "callback_data": "docs"}],
+        [{"text": "Моя подписка", "callback_data": "subscription", "style": "primary"}],
+        [{"text": "Купить", "callback_data": "subscription", "style": "success"}],
+        [{"text": "Функции", "callback_data": "features"}, {"text": "Реф. система", "callback_data": "referral"}],
+        [{"text": "О сервисе", "callback_data": "about"}],
     ]
     if WEBAPP_URL:
-        rows.append([{"text": "🚀 Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
+        rows[-1].append({"text": "Mini app", "web_app": {"url": WEBAPP_URL}})
+    else:
+        rows[-1].append({"text": "Mini app", "callback_data": "about"})
+    rows.append([{"text": "FAQ", "callback_data": "help"}, {"text": "Поддержка", "callback_data": "support"}])
     return {"inline_keyboard": rows}
 
 
@@ -213,6 +223,25 @@ def screen(name, user, arg=""):
             "Друг получает 3 дня пробного периода, вы тоже получаете 3 дня за каждого друга.\n"
             f"Приглашено: {record.get('invited', 0)}"
         )
+        return text, back_markup()
+    if name == "features":
+        text = (
+            "Функции SupplineVPN\n\n"
+            "• Персональный ключ доступа\n"
+            "• Подключение нескольких устройств\n"
+            "• Пробный период 3 дня\n"
+            "• Оплата звёздами Telegram или USDT"
+        )
+        return text, back_markup()
+    if name == "about":
+        text = (
+            "О сервисе SupplineVPN\n\n"
+            "Сервис предоставляет доступ к защищённому интернет-соединению. "
+            "Оплата, подписка и ключи управляются прямо в боте."
+        )
+        return text, back_markup()
+    if name == "support":
+        text = "Поддержка\n\nПо всем вопросам напишите сюда, в этот чат. Мы ответим как можно скорее."
         return text, back_markup()
     if name == "help":
         text = (
@@ -391,8 +420,7 @@ def handle_start(message, user, payload):
         note = "С возвращением!"
 
     send(chat_id, f"Привет, {user.get('first_name', '')}! {note}", reply_keyboard())
-    body, markup = screen("menu", user)
-    send(chat_id, body, markup)
+    send(chat_id, WELCOME_TEXT, menu_markup())
 
 
 def handle_message(message):
