@@ -63,19 +63,38 @@ from docs_terms import TERMS  # noqa: E402
 DOCS = {"terms": ("Пользовательское соглашение", TERMS), "privacy": ("Политика конфиденциальности", PRIVACY)}
 
 
+def split_sections(text):
+    """Режет документ по разделам: каждый пункт вида '1. Общие положения' — отдельная часть.
+    Текст не меняется, только делится по границам разделов."""
+    import re
+    lines = text.split("\n")
+    starts = [i for i, line in enumerate(lines) if re.match(r"^\d+\. ", line)]
+    if not starts:
+        return [text]
+    parts = ["\n".join(lines[:starts[0]]).strip()]
+    for idx, start in enumerate(starts):
+        end = starts[idx + 1] if idx + 1 < len(starts) else len(lines)
+        parts.append("\n".join(lines[start:end]).strip())
+    return [p for p in parts if p]
+
+
 def send_long(chat_id, text, markup=None):
-    """Отправляет длинный текст частями, не превышая лимит Telegram (4096 символов)."""
+    """Отправляет документ по разделам, с номером части. Каждый раздел — отдельным сообщением.
+    Если раздел длиннее лимита Telegram (4096 символов), режется по абзацам."""
     limit = 3900
-    parts = []
-    while len(text) > limit:
-        cut = text.rfind("\n", 0, limit)
-        if cut <= 0:
-            cut = limit
-        parts.append(text[:cut])
-        text = text[cut:].lstrip("\n")
-    parts.append(text)
-    for i, part in enumerate(parts):
-        send(chat_id, part, markup if i == len(parts) - 1 else None)
+    chunks = []
+    for section in split_sections(text):
+        while len(section) > limit:
+            cut = section.rfind("\n", 0, limit)
+            if cut <= 0:
+                cut = limit
+            chunks.append(section[:cut].strip())
+            section = section[cut:].strip()
+        chunks.append(section)
+    total = len(chunks)
+    for i, chunk in enumerate(chunks, 1):
+        label = f"({i}/{total})\n\n" if total > 1 else ""
+        send(chat_id, label + chunk, markup if i == total else None)
 
 
 def docs_markup():
