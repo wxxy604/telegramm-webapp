@@ -162,6 +162,7 @@ def menu_markup():
     else:
         rows[-1].append({"text": "Mini app", "callback_data": "about"})
     rows.append([{"text": "FAQ", "callback_data": "help"}, {"text": "Поддержка", "callback_data": "support"}])
+    rows.append([{"text": "📄 Документы", "callback_data": "docs"}])
     return {"inline_keyboard": rows}
 
 
