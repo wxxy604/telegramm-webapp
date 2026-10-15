@@ -8,13 +8,12 @@ if (tg) {
 const $ = (id) => document.getElementById(id);
 const BOT = "https://t.me/SupplineVPNbot";
 
-// Настройки сохраняются в браузере
-const defaults = { notify: true, theme: false };
-const settings = Object.assign({}, defaults, JSON.parse(localStorage.getItem("settings") || "{}"));
-// Способ оплаты, выбранный в выпадающем списке
+// Настройки и выбранный способ оплаты сохраняются в браузере
+const settings = Object.assign({ notify: true, theme: false },
+    JSON.parse(localStorage.getItem("settings") || "{}"));
 let payMethod = localStorage.getItem("payMethod") || "crypto";
+let selectedPlan = "1m";
 
-// Цены по способу оплаты
 const PRICES = {
     crypto: { "1m": "2 USDT", "3m": "5 USDT", "12m": "18 USDT" },
     stars:  { "1m": "150 ⭐", "3m": "400 ⭐", "12m": "1 400 ⭐" },
@@ -37,13 +36,16 @@ function haptic() {
     if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred("light");
 }
 
+// Показываем только один экран и подсвечиваем вкладку
 function showTab(tab) {
-    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-    document.querySelectorAll(".tabbar button").forEach(b => b.classList.remove("active"));
-    const screen = $("screen-" + tab);
-    if (screen) screen.classList.add("active");
-    const navBtn = document.querySelector(`.tabbar button[data-tab="${tab}"]`);
-    if (navBtn) navBtn.classList.add("active");
+    document.querySelectorAll(".screen").forEach(s => {
+        const on = s.id === "screen-" + tab;
+        s.classList.toggle("active", on);
+        s.style.display = on ? "block" : "none";
+    });
+    document.querySelectorAll(".tabbar button").forEach(b => {
+        b.classList.toggle("active", b.dataset.tab === tab);
+    });
     haptic();
 }
 
@@ -62,6 +64,12 @@ function renderPayment() {
     document.querySelectorAll("[data-price]").forEach(el => {
         el.textContent = PRICES[payMethod][el.dataset.price];
     });
+    document.querySelectorAll(".plan-row").forEach(r => {
+        r.classList.toggle("selected", r.dataset.plan === selectedPlan);
+    });
+    $("pay-btn").textContent = payMethod === "sbp"
+        ? "СБП — скоро"
+        : "Оплатить " + PRICES[payMethod][selectedPlan];
 }
 
 // Выпадающий список способа оплаты
@@ -78,7 +86,16 @@ document.querySelectorAll(".select-opt").forEach(opt => {
     });
 });
 
-// Оплата: открываем бота по ссылке, в боте создаётся счёт нужного способа
+// Выбор тарифа
+document.querySelectorAll(".plan-row").forEach(row => {
+    row.addEventListener("click", () => {
+        selectedPlan = row.dataset.plan;
+        renderPayment();
+        haptic();
+    });
+});
+
+// Оплата: открываем бота по deep link, там создаётся счёт нужного способа
 function openBot(link) {
     if (tg && typeof tg.openTelegramLink === "function") {
         tg.openTelegramLink(link);
@@ -88,31 +105,20 @@ function openBot(link) {
     }
 }
 
-let selectedPlan = "1m";
-document.querySelectorAll("[data-price]").forEach(el => {
-    el.closest(".tariff").addEventListener("click", () => {
-        selectedPlan = el.dataset.price;
-        document.querySelectorAll(".tariff").forEach(t => t.style.outline = "none");
-        el.closest(".tariff").style.outline = "2px solid var(--accent)";
-    });
-});
-
 $("pay-btn").addEventListener("click", () => {
-    const link = payMethod === "crypto"
-        ? BOT + "?start=cbuy_" + selectedPlan
-        : BOT + "?start=buy_" + selectedPlan;
     if (payMethod === "sbp") {
-        toast("СБП подключим позже");
+        toast("СБП пока недоступен");
         return;
     }
-    openBot(link);
+    const prefix = payMethod === "crypto" ? "cbuy_" : "buy_";
+    openBot(BOT + "?start=" + prefix + selectedPlan);
 });
 
 document.querySelectorAll(".tabbar button").forEach(btn => {
     btn.addEventListener("click", () => showTab(btn.dataset.tab));
 });
-document.querySelectorAll("[data-go]").forEach(btn => {
-    btn.addEventListener("click", () => showTab(btn.dataset.go));
+document.querySelectorAll("[data-go]").forEach(el => {
+    el.addEventListener("click", () => showTab(el.dataset.go));
 });
 document.querySelectorAll("[data-toggle]").forEach(el => {
     el.addEventListener("click", () => {
@@ -134,7 +140,7 @@ document.querySelectorAll("[data-doc]").forEach(el => {
     });
 });
 
-// Профиль из Telegram: имя, ID, аватарка (если есть) или первая буква
+// Профиль из Telegram: имя, ID, аватарка или первая буква
 const user = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
 if (user) {
     $("p-name").textContent = user.first_name;
@@ -150,3 +156,4 @@ if (user) {
 
 renderSettings();
 renderPayment();
+showTab("home");
