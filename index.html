@@ -114,12 +114,24 @@
             <div class="item"><div class="icon">🆔</div><div class="item-body"><div class="item-title">ID</div></div><div class="item-end" id="p-id">—</div></div>
         </div>
 
+        <div class="section-label">Документы</div>
+        <div class="group">
+            <div class="item" data-doc="terms"><div class="icon">📜</div><div class="item-body"><div class="item-title">Пользовательское соглашение</div></div><div class="chev">›</div></div>
+            <div class="item" data-doc="privacy"><div class="icon">🔒</div><div class="item-body"><div class="item-title">Политика конфиденциальности</div></div><div class="chev">›</div></div>
+        </div>
+
         <div class="section-label">Информация</div>
         <div class="group">
             <div class="item" data-go="help"><div class="icon">ℹ️</div><div class="item-body"><div class="item-title">О приложении</div></div><div class="chev">›</div></div>
             <div class="item" data-go="help"><div class="icon">❓</div><div class="item-body"><div class="item-title">Помощь</div></div><div class="chev">›</div></div>
             <div class="item" data-go="help"><div class="icon">🎧</div><div class="item-body"><div class="item-title">Поддержка</div><div class="item-sub">Напишите в чат с ботом</div></div><div class="chev">›</div></div>
         </div>
+    </section>
+
+    <section class="screen" id="screen-doc">
+        <div class="item doc-back" data-go="settings"><div class="chev" style="transform:rotate(180deg)">›</div><div class="item-title">Назад</div></div>
+        <div class="title" id="doc-title">Документ</div>
+        <div class="group"><div class="doc-text" id="doc-text"></div></div>
     </section>
 
     <section class="screen" id="screen-help">
@@ -142,6 +154,8 @@
     </nav>
 
     <div class="toast" id="toast"></div>
+    <script src="legal_terms.js"></script>
+    <script src="legal_privacy.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

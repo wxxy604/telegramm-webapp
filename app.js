@@ -60,6 +60,16 @@ document.querySelectorAll("nav button").forEach(btn => {
     btn.addEventListener("click", () => showTab(btn.dataset.tab));
 });
 
+// Документы: открываем полный текст в отдельном экране
+document.querySelectorAll("[data-doc]").forEach(el => {
+    el.addEventListener("click", () => {
+        const doc = el.dataset.doc === "terms" ? LEGAL_TERMS : LEGAL_PRIVACY;
+        $("doc-title").textContent = doc.title;
+        $("doc-text").textContent = doc.text;
+        showTab("doc");
+    });
+});
+
 document.querySelectorAll("[data-go]").forEach(btn => {
     btn.addEventListener("click", () => showTab(btn.dataset.go));
 });
