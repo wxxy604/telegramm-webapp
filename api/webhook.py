@@ -97,6 +97,40 @@ def send_long(chat_id, text, markup=None):
         send(chat_id, label + chunk, markup if i == total else None)
 
 
+def group_pages(text, limit=3500):
+    """Собирает разделы документа в страницы, не длиннее limit символов."""
+    pages = []
+    current = ""
+    for section in split_sections(text):
+        if current and len(current) + len(section) + 2 > limit:
+            pages.append(current)
+            current = section
+        else:
+            current = f"{current}\n\n{section}" if current else section
+    if current:
+        pages.append(current)
+    return pages
+
+
+def page_markup(key, page, total):
+    row = []
+    if page > 1:
+        row.append({"text": "◀️ Назад", "callback_data": f"pg:{key}:{page - 1}"})
+    row.append({"text": f"{page} / {total}", "callback_data": "noop"})
+    if page < total:
+        row.append({"text": "Вперёд ▶️", "callback_data": f"pg:{key}:{page + 1}"})
+    return {"inline_keyboard": [row, [{"text": "📄 К документам", "callback_data": "docs"}]]}
+
+
+def show_doc_page(chat_id, message_id, key, page):
+    """Показывает страницу документа. Если message_id задан, сообщение редактируется, иначе отправляется новое."""
+    title, text = DOCS[key]
+    pages = group_pages(text)
+    page = max(1, min(page, len(pages)))
+    body = f"{title}\n\n{pages[page - 1]}"
+    edit_or_send(chat_id, message_id, body, page_markup(key, page, len(pages)))
+
+
 def docs_markup():
     return {"inline_keyboard": [
         [{"text": "📜 Пользовательское соглашение", "callback_data": "doc:terms"}],
@@ -328,9 +362,15 @@ def handle_callback(cb):
     if name == "docs":
         edit_or_send(chat_id, msg.get("message_id"), "📄 Документы\n\nВыберите документ:", docs_markup())
         return
+    if name == "noop":
+        return
     if name == "doc" and arg in DOCS:
-        title, text = DOCS[arg]
-        send_long(chat_id, f"{title}\n\n{text}", back_markup())
+        show_doc_page(chat_id, msg.get("message_id"), arg, 1)
+        return
+    if name == "pg":
+        key, _, page = arg.partition(":")
+        if key in DOCS and page.isdigit():
+            show_doc_page(chat_id, msg.get("message_id"), key, int(page))
         return
     text, markup = screen(name, cb["from"], arg)
     edit_or_send(chat_id, msg.get("message_id"), text, markup)
