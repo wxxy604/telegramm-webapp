@@ -148,6 +148,12 @@ if (user) {
     $("p-name").textContent = user.first_name;
     $("p-id").textContent = user.id;
     $("home-greet").textContent = "Привет, " + user.first_name + "!";
+    $("avatar-letter").textContent = user.first_name.charAt(0).toUpperCase();
+    if (user.photo_url) {
+        $("avatar-img").src = user.photo_url;
+        $("avatar-img").hidden = false;
+        $("avatar-letter").hidden = true;
+    }
 
 }
 
