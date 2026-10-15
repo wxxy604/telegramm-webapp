@@ -93,6 +93,7 @@ body {
     content: ""; position: absolute; left: 0; right: 0; top: -22px; height: 22px;
     background: linear-gradient(to bottom, rgba(0,0,0,0), var(--bg));
     pointer-events: none;
+}
 
 /* Выпадающий список способа оплаты */
 .select { position: relative; margin-bottom: 12px; }
@@ -145,7 +146,6 @@ body {
 }
 .toast.show { opacity: 1; }
 
-}
 .tabbar button {
     flex: 1; background: none; border: none; color: var(--hint); cursor: pointer;
     display: flex; flex-direction: column; align-items: center; gap: 4px;
