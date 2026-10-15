@@ -174,11 +174,9 @@ def welcome_text(user, record):
     first = user.get("first_name", "")
     return (
         f"Привет, {first}! Добро пожаловать в SupplineVPN\n\n"
-        "SupplineVPN обеспечивает стабильное подключение.\n"
-        "SupplineVPN защищает трафик в публичных сетях.\n"
-        "SupplineVPN работает на 3 устройствах одной подпиской.\n\n"
-        f"Подписка: {paid_status(record)}\n"
-        f"Пробный период: {trial_status(record)}"
+        "SupplineVPN обеспечивает стабильное подключение, защиту трафика в публичных сетях "
+        "и работу на 3 устройствах одной подпиской.\n\n"
+        f"Статус вашей подписки:\n{paid_status(record)}"
     )
 
 
