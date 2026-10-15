@@ -67,9 +67,11 @@ function renderPayment() {
     document.querySelectorAll(".plan-row").forEach(r => {
         r.classList.toggle("selected", r.dataset.plan === selectedPlan);
     });
-    $("pay-btn").textContent = payMethod === "sbp"
-        ? "СБП — скоро"
-        : "Оплатить " + PRICES[payMethod][selectedPlan];
+    const payBtn = $("pay-btn");
+    if (payBtn) {
+        const lbl = (T && T().pay_btn) || "Перейти к оплате";
+        payBtn.textContent = payMethod === "sbp" ? "СБП — скоро" : lbl + " · " + PRICES[payMethod][selectedPlan];
+    }
 }
 
 // Выпадающий список способа оплаты
@@ -154,7 +156,7 @@ if (user) {
     }
 }
 
-// Выпадающие списки верхней плашки (уведомления и язык)
+// Выпадающие списки верхней плашки: открываются по клику, закрываются при клике мимо
 function closeDrops(except) {
     document.querySelectorAll(".drop").forEach(d => {
         if (d !== except) d.classList.remove("open");
@@ -174,34 +176,57 @@ $("lang-toggle").addEventListener("click", e => {
 });
 document.addEventListener("click", () => closeDrops(null));
 
-// Язык интерфейса: RU / EN
+// Язык интерфейса RU / EN
 const I18N = {
     ru: {
-        notif_sub_ends: "Подписка заканчивается через 3 дня",
-        notif_trial: "Пробный период активен",
+        notif_sub_ends: "Подписка заканчивается через {d} дн.",
+        notif_sub_ended: "Подписка закончилась",
+        notif_trial_ends: "Пробный период заканчивается через {d} дн.",
         notif_none: "Новых уведомлений нет",
         lang_label: "RU",
+        home_sub: "Статус подписки",
+        home_trial: "Пробный период",
+        active: "активна",
+        inactive: "не активна",
+        pay_btn: "Перейти к оплате",
+        pay_note: "Оплата откроется в чате с ботом.",
+        keys_empty: "Ключей пока нет",
+        devices_empty: "Подключённых устройств пока нет",
     },
     en: {
-        notif_sub_ends: "Your subscription ends in 3 days",
-        notif_trial: "Trial period is active",
+        notif_sub_ends: "Subscription ends in {d} days",
+        notif_sub_ended: "Subscription has ended",
+        notif_trial_ends: "Trial ends in {d} days",
         notif_none: "No new notifications",
         lang_label: "EN",
+        home_sub: "Subscription status",
+        home_trial: "Trial period",
+        active: "active",
+        inactive: "inactive",
+        pay_btn: "Continue to payment",
+        pay_note: "Payment opens in the bot chat.",
+        keys_empty: "No keys yet",
+        devices_empty: "No devices connected",
     },
 };
 let lang = localStorage.getItem("lang") || "ru";
+const T = () => I18N[lang];
 
+// Статические тексты с data-i18n
 function applyLang() {
-    const dict = I18N[lang];
     document.documentElement.lang = lang;
     document.querySelectorAll("[data-i18n]").forEach(el => {
-        const key = el.dataset.i18n;
-        if (dict[key]) el.textContent = dict[key];
+        const v = T()[el.dataset.i18n];
+        if (v) el.textContent = v;
     });
-    $("lang-label").textContent = dict.lang_label;
+    $("lang-label").textContent = T().lang_label;
+    const note = $("pay-note");
+    if (note) note.textContent = T().pay_note;
     document.querySelectorAll("[data-lang]").forEach(b => {
         b.classList.toggle("active", b.dataset.lang === lang);
     });
+    renderPayment();
+    renderNotifications();
 }
 document.querySelectorAll("[data-lang]").forEach(btn => {
     btn.addEventListener("click", e => {
@@ -214,7 +239,79 @@ document.querySelectorAll("[data-lang]").forEach(btn => {
     });
 });
 
+// Состояние подписки с сервера бота (даты окончания)
+const BOT_API = "https://telegramm-webapp.vercel.app/api/me";
+let state = { paid_until: 0, trial_until: 0, now: Math.floor(Date.now() / 1000) };
+
+function daysLeft(until) {
+    const sec = until - state.now;
+    return sec > 0 ? Math.ceil(sec / 86400) : 0;
+}
+
+// Уведомления появляются только когда что-то происходит
+function buildNotifications() {
+    const items = [];
+    const paidDays = daysLeft(state.paid_until);
+    const trialDays = daysLeft(state.trial_until);
+    if (state.paid_until > 0 && paidDays > 0 && paidDays <= 3) {
+        items.push(T().notif_sub_ends.replace("{d}", paidDays));
+    } else if (state.paid_until > 0 && paidDays === 0) {
+        items.push(T().notif_sub_ended);
+    }
+    if (state.trial_until > 0 && trialDays > 0 && trialDays <= 3) {
+        items.push(T().notif_trial_ends.replace("{d}", trialDays));
+    }
+    return items;
+}
+
+function renderNotifications() {
+    const list = $("notif-list");
+    const items = buildNotifications();
+    $("notif-dot").hidden = items.length === 0;
+    list.innerHTML = "";
+    if (items.length === 0) {
+        const el = document.createElement("div");
+        el.className = "drop-item muted";
+        el.textContent = T().notif_none;
+        list.appendChild(el);
+        return;
+    }
+    items.forEach(text => {
+        const el = document.createElement("div");
+        el.className = "drop-item";
+        el.textContent = text;
+        list.appendChild(el);
+    });
+}
+
+function renderStatus() {
+    const paid = state.paid_until > state.now;
+    const trial = state.trial_until > state.now;
+    const days = daysLeft(state.paid_until);
+    $("home-sub").textContent = paid
+        ? `${T().active}, ${days} дн.`
+        : T().inactive;
+    $("home-trial").textContent = trial
+        ? `${T().active}, ${daysLeft(state.trial_until)} дн.`
+        : T().inactive;
+}
+
+async function loadState() {
+    if (!user) return;
+    try {
+        const r = await fetch(`${BOT_API}?uid=${user.id}`, { cache: "no-store" });
+        if (r.ok) state = await r.json();
+    } catch (e) {
+        // Нет связи с сервером: оставляем пустое состояние
+    }
+    renderStatus();
+    renderNotifications();
+}
+
 renderSettings();
 renderPayment();
 applyLang();
+renderStatus();
+renderNotifications();
+loadState();
 showTab("home");
