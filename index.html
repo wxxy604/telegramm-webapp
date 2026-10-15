@@ -35,7 +35,6 @@
 
     <section class="screen active" id="screen-home">
         <div class="title" id="home-greet">Привет!</div>
-        <div class="subtitle" data-i18n="home_subtitle">Ваш доступ и баланс</div>
         <div class="card status-card">
             <div class="card-label" data-i18n="home_sub">Статус подписки</div>
             <div class="card-value" id="home-sub">Не активна</div>
@@ -46,7 +45,7 @@
         </div>
         <div class="group">
             <div class="row" data-go="pay">
-                <div class="row-icon"><svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z"/></svg></div>
+                <div class="row-icon"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg></div>
                 <div class="row-body"><div class="row-title" data-i18n="renew">Продлить подписку</div><div class="row-sub" data-i18n="renew_sub">Выбрать способ оплаты</div></div>
                 <div class="row-chev">›</div>
     <section class="screen" id="screen-pay">
@@ -126,8 +125,8 @@
     <nav class="tabbar">
         <button class="active" data-tab="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1z"/></svg><span data-i18n="tab_home">Главная</span></button>
         <button data-tab="devices"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg><span data-i18n="tab_devices">Устройства</span></button>
-        <button data-tab="pay"><svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z"/></svg><span data-i18n="tab_pay">Оплата</span></button>
-        <button data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span data-i18n="tab_settings">Настройки</span></button>
+        <button data-tab="pay"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg><span data-i18n="tab_pay">Оплата</span></button>
+        <button data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg><span data-i18n="tab_settings">Настройки</span></button>
     </nav>
 
     <div class="toast" id="toast"></div>

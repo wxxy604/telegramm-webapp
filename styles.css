@@ -60,6 +60,33 @@ body[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.55); }
 .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .topbar .brand { font-family: "Unbounded", sans-serif; font-size: 16px; font-weight: 800; }
 
+/* Кнопки: тонкая обводка «жидкое стекло» и анимация нажатия */
+.btn, .pill, .select-head, .icon-btn, .lang-btn, .row, .plan-row {
+    position: relative; overflow: hidden;
+    transition: transform 0.15s cubic-bezier(.2,.8,.2,1), box-shadow 0.25s ease, background 0.25s ease, border-color 0.25s ease;
+}
+.btn, .select-head, .icon-btn, .lang-btn {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.25), 0 6px 18px rgba(0,0,0,0.28);
+    background-clip: padding-box;
+}
+.btn::before, .select-head::before, .icon-btn::before, .lang-btn::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 45%, rgba(255,255,255,0.06) 100%);
+}
+.btn:active, .select-head:active, .icon-btn:active, .lang-btn:active, .row:active, .plan-row:active {
+    transform: scale(0.96);
+}
+.btn:active::after, .icon-btn:active::after, .lang-btn:active::after, .select-head:active::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(circle at center, rgba(255,255,255,0.25), transparent 70%);
+    animation: press-ripple 0.45s ease-out;
+}
+@keyframes press-ripple {
+    from { opacity: 0.9; transform: scale(0.6); }
+    to   { opacity: 0; transform: scale(1.4); }
+}
+
 /* Квадратные кнопки верхней плашки */
 .icon-btn, .lang-btn {
     height: 40px; border-radius: 12px; border: 1px solid var(--line);
