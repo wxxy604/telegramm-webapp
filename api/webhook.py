@@ -140,7 +140,12 @@ def docs_markup():
 
 
 def back_markup():
-    return {"inline_keyboard": [[{"text": "◀️ Назад в меню", "callback_data": "menu"}]]}
+    return {"inline_keyboard": [[{"text": "Назад в меню", "callback_data": "menu"}]]}
+
+
+def html_escape(text):
+    """Экранирует символы, которые Telegram HTML-разметка принимает как теги."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 WELCOME_TEXT = (
@@ -155,6 +160,7 @@ def menu_markup():
         [{"text": "Купить", "callback_data": "buy", "style": "success"}],
         [{"text": "Мои ключи", "callback_data": "keys"}, {"text": "Реф. система", "callback_data": "referral"}],
         [{"text": "Поддержка", "callback_data": "support"}],
+        [{"text": "Документы", "callback_data": "docs"}],
     ]
     if WEBAPP_URL:
         rows.append([{"text": "Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
@@ -171,12 +177,12 @@ def support_markup():
 
 def welcome_text(user, record):
     """Приветствие: преимущества VPN и статус подписки сразу, без лишних нажатий."""
-    first = user.get("first_name", "")
+    first = html_escape(user.get("first_name", ""))
     return (
-        f"Привет, {first}! Добро пожаловать в SupplineVPN\n\n"
-        "SupplineVPN обеспечивает стабильное подключение, защиту трафика в публичных сетях "
-        "и работу на 3 устройствах одной подпиской.\n\n"
-        f"Статус вашей подписки:\n{paid_status(record)}"
+        f"<b>Привет, {first}! Добро пожаловать в SupplineVPN</b>\n\n"
+        "<blockquote>SupplineVPN обеспечивает стабильное подключение, защиту трафика в публичных сетях "
+        "и работу на 3 устройствах одной подпиской.</blockquote>\n\n"
+        f"<blockquote><b>Статус вашей подписки:</b>\n{html_escape(paid_status(record))}</blockquote>"
     )
 
 
@@ -221,7 +227,7 @@ def screen(name, user, arg=""):
             [{"text": "💵 CryptoBot (USDT)", "callback_data": "method:crypto"}],
             [{"text": "⭐ TG Stars", "callback_data": "method:stars"}],
             [{"text": "💳 СБП", "callback_data": "method:sbp"}],
-            [{"text": "◀️ Назад", "callback_data": "subscription"}],
+            [{"text": "Назад", "callback_data": "menu"}],
         ]}
         return text, markup
     if name == "method":
@@ -239,7 +245,7 @@ def screen(name, user, arg=""):
             label = "СБП"
         else:
             return "Способ не найден.", back_markup()
-        rows.append([{"text": "◀️ Назад", "callback_data": "buy"}])
+        rows.append([{"text": "Назад", "callback_data": "buy"}])
         return f"Оплата: {label}\n\nВыберите тариф:", {"inline_keyboard": rows}
     if name == "sbp":
         return "СБП пока недоступен. Выберите CryptoBot или TG Stars.", {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "buy"}]]}
@@ -296,8 +302,11 @@ def screen(name, user, arg=""):
 
 
 
-def send(chat_id, text, markup):
-    call("sendMessage", {"chat_id": chat_id, "text": text, "reply_markup": markup})
+def send(chat_id, text, markup, parse_mode=None):
+    payload = {"chat_id": chat_id, "text": text, "reply_markup": markup}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    call("sendMessage", payload)
 
 
 def edit_or_send(chat_id, message_id, text, markup):
@@ -462,7 +471,7 @@ def handle_start(message, user, payload):
 
     # Приветствие со статусом и преимуществами сразу, нижняя клавиатура снимается
     record = db.get_user(user["id"]) or {}
-    send(chat_id, welcome_text(user, record), menu_markup())
+    send(chat_id, welcome_text(user, record), menu_markup(), parse_mode="HTML")
     call("sendMessage", {"chat_id": chat_id, "text": "\u200b", "reply_markup": {"remove_keyboard": True}})
 
 
