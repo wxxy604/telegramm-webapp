@@ -251,7 +251,7 @@ def screen(name, user, arg=""):
             "/help — эта справка"
         )
         return text, back_markup()
-    return f"Главное меню, {first}:", menu_markup()
+    return WELCOME_TEXT, menu_markup()
 
 
 
