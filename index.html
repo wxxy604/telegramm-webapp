@@ -13,7 +13,7 @@
 <body>
     <header class="topbar">
         <div class="topbar-left">
-            <div class="app-avatar" id="avatar"><img id="avatar-img" alt="" hidden><span id="avatar-letter">S</span></div>
+            <div class="app-avatar"><img src="logo.svg" alt="SupplineVPN"></div>
             <div class="brand">SupplineVPN</div>
         </div>
         <div class="topbar-right">
@@ -41,22 +41,22 @@
         <div class="title" id="home-greet">Привет!</div>
         <div class="subtitle">Ваш доступ и баланс</div>
         <div class="card status-card">
-            <div class="card-label">Статус подписки</div>
+            <div class="card-label" data-i18n="home_sub">Статус подписки</div>
             <div class="card-value" id="home-sub">Не активна</div>
         </div>
         <div class="card status-card">
-            <div class="card-label">Баланс</div>
+            <div class="card-label" data-i18n="balance">Баланс</div>
             <div class="card-value" id="home-balance">0 ₽</div>
         </div>
         <div class="group">
             <div class="row" data-go="pay">
                 <div class="row-icon"><svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z"/></svg></div>
-                <div class="row-body"><div class="row-title">Продлить подписку</div><div class="row-sub">Выбрать способ оплаты</div></div>
+                <div class="row-body"><div class="row-title" data-i18n="renew">Продлить подписку</div><div class="row-sub" data-i18n="renew_sub">Выбрать способ оплаты</div></div>
                 <div class="row-chev">›</div>
             </div>
             <div class="row" data-go="keys">
                 <div class="row-icon"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></svg></div>
-                <div class="row-body"><div class="row-title">Мои ключи</div><div class="row-sub">Подключение для устройств</div></div>
+                <div class="row-body"><div class="row-title" data-i18n="my_keys">Мои ключи</div><div class="row-sub" data-i18n="my_keys_sub">Подключение для устройств</div></div>
                 <div class="row-chev">›</div>
             </div>
         </div>
@@ -66,7 +66,7 @@
         <div class="title">Ключи</div>
         <div class="subtitle">Ключи появятся после активации подписки</div>
         <div class="group">
-            <div class="empty">Ключей пока нет</div>
+            <div class="empty" data-i18n="keys_empty">Ключей пока нет</div>
         </div>
     </section>
 
@@ -74,7 +74,7 @@
         <div class="title">Устройства</div>
         <div class="subtitle">Подключено: <span id="device-count">0</span> из 3</div>
         <div class="group">
-            <div class="empty">Подключённых устройств пока нет</div>
+            <div class="empty" data-i18n="devices_empty">Подключённых устройств пока нет</div>
         </div>
     </section>
 
