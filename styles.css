@@ -25,14 +25,20 @@ body[data-theme="light"] {
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 body {
-    font-family: "Segoe UI", -apple-system, Roboto, sans-serif;
+    font-family: "Manrope", "Segoe UI", -apple-system, Roboto, sans-serif;
+    font-weight: 400;
     background: var(--bg);
     color: var(--text);
     padding: 14px var(--pad) 150px;
     min-height: 100vh;
 }
 .topbar { display: flex; align-items: center; justify-content: space-between; height: 44px; margin-bottom: 8px; }
-.brand { font-size: 17px; font-weight: 700; }
+.brand { font-family: "Unbounded", sans-serif; font-size: 17px; font-weight: 800; }
+.title, .card-value, .status-value { font-family: "Unbounded", sans-serif; }
+.title { font-weight: 800; }
+.card-value { font-weight: 800; }
+.row-title, .plan-name, .select-head, .btn, .select-opt, .tabbar button { font-weight: 600; }
+.row-title, .select-opt, .btn { font-family: "Manrope", sans-serif; }
 .avatar {
     width: 36px; height: 36px; border-radius: 50%; overflow: hidden;
     background: var(--accent-soft); color: var(--accent);
