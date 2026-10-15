@@ -419,9 +419,9 @@ def handle_start(message, user, payload):
     else:
         note = "С возвращением!"
 
-    # Убираем нижнюю клавиатуру у пользователя, остаётся только инлайн-меню
-    send(chat_id, f"Привет, {user.get('first_name', '')}! {note}", {"remove_keyboard": True})
+    # Только меню: без лишнего приветствия. Нижняя клавиатура снимается.
     send(chat_id, WELCOME_TEXT, menu_markup())
+    call("sendMessage", {"chat_id": chat_id, "text": "\u200b", "reply_markup": {"remove_keyboard": True}})
 
 
 def handle_message(message):
