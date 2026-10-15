@@ -512,7 +512,30 @@ def handle_message(message):
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # Данные для мини приложения: статус подписки и пробного периода (без секретов)
+        if self.path.startswith("/api/me"):
+            self._me()
+            return
         self._reply(200, "bot is alive")
+
+    def _me(self):
+        from urllib.parse import urlparse, parse_qs
+        uid = parse_qs(urlparse(self.path).query).get("uid", [""])[0]
+        if not uid.isdigit():
+            self._reply(400, "bad uid")
+            return
+        record = db.get_user(uid) or {}
+        now = int(time.time())
+        body = json.dumps({
+            "paid_until": record.get("paid_until", 0),
+            "trial_until": record.get("trial_until", 0),
+            "now": now,
+        })
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
 
     def do_POST(self):
         if WEBHOOK_SECRET and self.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
