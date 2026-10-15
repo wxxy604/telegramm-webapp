@@ -154,6 +154,67 @@ if (user) {
     }
 }
 
+// Выпадающие списки верхней плашки (уведомления и язык)
+function closeDrops(except) {
+    document.querySelectorAll(".drop").forEach(d => {
+        if (d !== except) d.classList.remove("open");
+    });
+}
+$("notif-toggle").addEventListener("click", e => {
+    e.stopPropagation();
+    const drop = $("notif-drop");
+    closeDrops(drop);
+    drop.classList.toggle("open");
+});
+$("lang-toggle").addEventListener("click", e => {
+    e.stopPropagation();
+    const drop = $("lang-drop");
+    closeDrops(drop);
+    drop.classList.toggle("open");
+});
+document.addEventListener("click", () => closeDrops(null));
+
+// Язык интерфейса: RU / EN
+const I18N = {
+    ru: {
+        notif_sub_ends: "Подписка заканчивается через 3 дня",
+        notif_trial: "Пробный период активен",
+        notif_none: "Новых уведомлений нет",
+        lang_label: "RU",
+    },
+    en: {
+        notif_sub_ends: "Your subscription ends in 3 days",
+        notif_trial: "Trial period is active",
+        notif_none: "No new notifications",
+        lang_label: "EN",
+    },
+};
+let lang = localStorage.getItem("lang") || "ru";
+
+function applyLang() {
+    const dict = I18N[lang];
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+        const key = el.dataset.i18n;
+        if (dict[key]) el.textContent = dict[key];
+    });
+    $("lang-label").textContent = dict.lang_label;
+    document.querySelectorAll("[data-lang]").forEach(b => {
+        b.classList.toggle("active", b.dataset.lang === lang);
+    });
+}
+document.querySelectorAll("[data-lang]").forEach(btn => {
+    btn.addEventListener("click", e => {
+        e.stopPropagation();
+        lang = btn.dataset.lang;
+        localStorage.setItem("lang", lang);
+        applyLang();
+        closeDrops(null);
+        haptic();
+    });
+});
+
 renderSettings();
 renderPayment();
+applyLang();
 showTab("home");

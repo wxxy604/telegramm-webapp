@@ -59,6 +59,37 @@ body[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.55); }
 }
 .icon-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .topbar .brand { font-family: "Unbounded", sans-serif; font-size: 16px; font-weight: 800; }
+
+/* Квадратные кнопки верхней плашки */
+.icon-btn, .lang-btn {
+    height: 40px; border-radius: 12px; border: 1px solid var(--line);
+    background: rgba(255,255,255,.06); color: var(--text); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.icon-btn { width: 40px; position: relative; }
+.lang-btn { padding: 0 12px; font-family: "Manrope", sans-serif; font-size: 13px; font-weight: 600; }
+.lang-caret { font-size: 11px; color: var(--hint); }
+.notif-dot {
+    position: absolute; top: 8px; right: 9px; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface);
+}
+.drop { position: relative; }
+.drop-list {
+    position: absolute; right: 0; top: calc(100% + 8px); z-index: 120; min-width: 230px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 14px 34px rgba(0,0,0,.4); overflow: hidden;
+    opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.22s ease;
+}
+.drop.open .drop-list { opacity: 1; transform: none; pointer-events: auto; }
+.drop-item {
+    display: block; width: 100%; text-align: left; padding: 13px 16px; font-size: 14px;
+    font-family: "Manrope", sans-serif; color: var(--text); background: none; border: none;
+    cursor: pointer;
+}
+.drop-item + .drop-item { border-top: 1px solid var(--line); }
+.drop-item.muted { color: var(--hint); }
+.drop-item.active { color: var(--accent); font-weight: 600; }
 .brand { font-family: "Unbounded", sans-serif; font-size: 17px; font-weight: 800; }
 .title, .card-value, .status-value { font-family: "Unbounded", sans-serif; }
 .title { font-weight: 800; }
