@@ -153,7 +153,7 @@ WELCOME_TEXT = (
 def menu_markup():
     rows = [
         [{"text": "Моя подписка", "callback_data": "subscription", "style": "primary"}],
-        [{"text": "Купить", "callback_data": "subscription", "style": "success"}],
+        [{"text": "Купить", "callback_data": "buy", "style": "success"}],
         [{"text": "Функции", "callback_data": "features"}, {"text": "Реф. система", "callback_data": "referral"}],
         [{"text": "О сервисе", "callback_data": "about"}],
     ]
@@ -195,13 +195,40 @@ def screen(name, user, arg=""):
         )
         return text, back_markup()
     if name == "subscription":
-        rows = []
-        for key, (title, _, stars) in PLANS.items():
-            rows.append([{"text": f"⭐ {title} · {stars} звёзд", "callback_data": f"buy:{key}"}])
-            rows.append([{"text": f"💵 {title} · {CRYPTO_PRICES[key]} USDT", "callback_data": f"cbuy:{key}"}])
-        rows.append([{"text": "◀️ Назад в меню", "callback_data": "menu"}])
-        paid = paid_status(record)
-        return f"Подписка: {paid}\nПробный период: {trial_status(record)}\n\nВыберите тариф:", {"inline_keyboard": rows}
+        text = f"Подписка: {paid_status(record)}\nПробный период: {trial_status(record)}"
+        markup = {"inline_keyboard": [
+            [{"text": "💎 Купить", "callback_data": "buy"}],
+            [{"text": "◀️ Назад в меню", "callback_data": "menu"}],
+        ]}
+        return text, markup
+    if name == "buy":
+        text = "Купить подписку\n\nВыберите способ оплаты:"
+        markup = {"inline_keyboard": [
+            [{"text": "💵 CryptoBot (USDT)", "callback_data": "method:crypto"}],
+            [{"text": "⭐ TG Stars", "callback_data": "method:stars"}],
+            [{"text": "💳 СБП", "callback_data": "method:sbp"}],
+            [{"text": "◀️ Назад", "callback_data": "subscription"}],
+        ]}
+        return text, markup
+    if name == "method":
+        if arg == "crypto":
+            rows = [[{"text": f"{title} · {CRYPTO_PRICES[k]} USDT", "callback_data": f"cbuy:{k}"}]
+                    for k, (title, _, _) in PLANS.items()]
+            label = "CryptoBot (USDT)"
+        elif arg == "stars":
+            rows = [[{"text": f"{title} · {stars} звёзд", "callback_data": f"buy:{k}"}]
+                    for k, (title, _, stars) in PLANS.items()]
+            label = "TG Stars"
+        elif arg == "sbp":
+            rows = [[{"text": f"{title} · СБП", "callback_data": "sbp"}]
+                    for k, (title, _, _) in PLANS.items()]
+            label = "СБП"
+        else:
+            return "Способ не найден.", back_markup()
+        rows.append([{"text": "◀️ Назад", "callback_data": "buy"}])
+        return f"Оплата: {label}\n\nВыберите тариф:", {"inline_keyboard": rows}
+    if name == "sbp":
+        return "СБП пока недоступен. Выберите CryptoBot или TG Stars.", {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "buy"}]]}
     if name == "plan":
         if arg not in PLANS:
             return "Тариф не найден.", back_markup()
