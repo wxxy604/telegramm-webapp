@@ -69,8 +69,11 @@ function renderPayment() {
     });
     const payBtn = $("pay-btn");
     if (payBtn) {
-        const lbl = (T && T().pay_btn) || "Перейти к оплате";
-        payBtn.textContent = payMethod === "sbp" ? "СБП — скоро" : lbl + " · " + PRICES[payMethod][selectedPlan];
+        const dict = I18N_FULL[lang];
+        const lbl = dict.pay_btn;
+        payBtn.textContent = payMethod === "sbp"
+            ? dict.sbp_soon
+            : lbl + " · " + PRICES[payMethod][selectedPlan];
     }
 }
 
@@ -292,7 +295,9 @@ document.querySelectorAll("[data-lang]").forEach(btn => {
         lang = btn.dataset.lang;
         localStorage.setItem("lang", lang);
         applyLang();
+        // Смена языка закрывает все выпадающие списки (язык, уведомления, способ оплаты)
         closeDrops(null);
+        $("method-select").classList.remove("open");
         haptic();
     });
 });
