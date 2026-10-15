@@ -152,20 +152,20 @@ WELCOME_TEXT = (
 
 def menu_markup():
     rows = [
-        [{"text": "💎 Купить", "callback_data": "buy", "style": "success"}],
-        [{"text": "🔑 Мои ключи", "callback_data": "keys"}, {"text": "🎁 Реф. система", "callback_data": "referral"}],
-        [{"text": "💬 Поддержка", "callback_data": "support"}],
+        [{"text": "Купить", "callback_data": "buy", "style": "success"}],
+        [{"text": "Мои ключи", "callback_data": "keys"}, {"text": "Реф. система", "callback_data": "referral"}],
+        [{"text": "Поддержка", "callback_data": "support"}],
     ]
     if WEBAPP_URL:
-        rows.append([{"text": "🚀 Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
+        rows.append([{"text": "Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
     return {"inline_keyboard": rows}
 
 
 def support_markup():
     return {"inline_keyboard": [
-        [{"text": "❓ FAQ", "callback_data": "help"}, {"text": "ℹ️ О сервисе", "callback_data": "about"}],
-        [{"text": "⚡ Функции", "callback_data": "features"}, {"text": "📄 Документы", "callback_data": "docs"}],
-        [{"text": "◀️ Назад в меню", "callback_data": "menu"}],
+        [{"text": "FAQ", "callback_data": "help"}, {"text": "О сервисе", "callback_data": "about"}],
+        [{"text": "Функции", "callback_data": "features"}, {"text": "Документы", "callback_data": "docs"}],
+        [{"text": "Назад в меню", "callback_data": "menu"}],
     ]}
 
 
@@ -174,9 +174,9 @@ def welcome_text(user, record):
     first = user.get("first_name", "")
     return (
         f"Привет, {first}! Добро пожаловать в SupplineVPN\n\n"
-        "• Стабильное подключение\n"
-        "• Защита трафика в публичных сетях\n"
-        "• До 3 устройств на подписке\n\n"
+        "SupplineVPN обеспечивает стабильное подключение.\n"
+        "SupplineVPN защищает трафик в публичных сетях.\n"
+        "SupplineVPN работает на 3 устройствах одной подпиской.\n\n"
         f"Подписка: {paid_status(record)}\n"
         f"Пробный период: {trial_status(record)}"
     )
@@ -271,9 +271,9 @@ def screen(name, user, arg=""):
     if name == "features":
         text = (
             "Функции SupplineVPN\n\n"
-            "• Персональный ключ доступа\n"
-            "• Подключение нескольких устройств\n"
-            "• Оплата звёздами Telegram, USDT или СБП"
+            "SupplineVPN выдаёт персональный ключ доступа.\n"
+            "SupplineVPN подключает несколько устройств.\n"
+            "SupplineVPN принимает оплату звёздами Telegram, USDT или СБП."
         )
         return text, back_markup()
     if name == "about":
