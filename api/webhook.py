@@ -57,6 +57,35 @@ def reply_keyboard():
     return {"keyboard": rows, "resize_keyboard": True, "is_persistent": True}
 
 
+from docs_privacy import PRIVACY  # noqa: E402
+from docs_terms import TERMS  # noqa: E402
+
+DOCS = {"terms": ("Пользовательское соглашение", TERMS), "privacy": ("Политика конфиденциальности", PRIVACY)}
+
+
+def send_long(chat_id, text, markup=None):
+    """Отправляет длинный текст частями, не превышая лимит Telegram (4096 символов)."""
+    limit = 3900
+    parts = []
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit)
+        if cut <= 0:
+            cut = limit
+        parts.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    parts.append(text)
+    for i, part in enumerate(parts):
+        send(chat_id, part, markup if i == len(parts) - 1 else None)
+
+
+def docs_markup():
+    return {"inline_keyboard": [
+        [{"text": "📜 Пользовательское соглашение", "callback_data": "doc:terms"}],
+        [{"text": "🔒 Политика конфиденциальности", "callback_data": "doc:privacy"}],
+        [{"text": "◀️ Назад в меню", "callback_data": "menu"}],
+    ]}
+
+
 def back_markup():
     return {"inline_keyboard": [[{"text": "◀️ Назад в меню", "callback_data": "menu"}]]}
 
@@ -66,6 +95,7 @@ def menu_markup():
         [{"text": "👤 Профиль", "callback_data": "profile"}, {"text": "💎 Подписка", "callback_data": "subscription"}],
         [{"text": "🔑 Ключи", "callback_data": "keys"}, {"text": "📱 Устройства", "callback_data": "devices"}],
         [{"text": "🎁 Рефералы", "callback_data": "referral"}, {"text": "💬 Помощь", "callback_data": "help"}],
+        [{"text": "📄 Документы", "callback_data": "docs"}],
     ]
     if WEBAPP_URL:
         rows.append([{"text": "🚀 Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
@@ -275,6 +305,13 @@ def handle_callback(cb):
     if name == "check":
         invoice_id, _, key = arg.partition(":")
         crypto_check(chat_id, cb["from"]["id"], invoice_id, key)
+        return
+    if name == "docs":
+        edit_or_send(chat_id, msg.get("message_id"), "📄 Документы\n\nВыберите документ:", docs_markup())
+        return
+    if name == "doc" and arg in DOCS:
+        title, text = DOCS[arg]
+        send_long(chat_id, f"{title}\n\n{text}", back_markup())
         return
     text, markup = screen(name, cb["from"], arg)
     edit_or_send(chat_id, msg.get("message_id"), text, markup)
