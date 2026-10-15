@@ -303,7 +303,7 @@ document.querySelectorAll("[data-lang]").forEach(btn => {
 });
 
 // Состояние подписки с сервера бота (даты окончания)
-const BOT_API = "https://telegramm-webapp.vercel.app/api/me";
+const BOT_API = "https://telegramm-webapp.vercel.app/api/webhook";
 let state = { paid_until: 0, trial_until: 0, now: Math.floor(Date.now() / 1000) };
 
 function daysLeft(until) {
