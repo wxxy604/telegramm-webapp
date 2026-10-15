@@ -300,7 +300,7 @@ def screen(name, user, arg=""):
             "/help — эта справка"
         )
         return text, back_markup()
-    return WELCOME_TEXT, menu_markup()
+    return welcome_text(user, record), menu_markup()
 
 
 
@@ -311,12 +311,15 @@ def send(chat_id, text, markup, parse_mode=None):
     call("sendMessage", payload)
 
 
-def edit_or_send(chat_id, message_id, text, markup):
+def edit_or_send(chat_id, message_id, text, markup, parse_mode=None):
     if message_id:
-        result = call("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": markup})
+        payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": markup}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        result = call("editMessageText", payload)
         if result.get("ok"):
             return
-    send(chat_id, text, markup)
+    send(chat_id, text, markup, parse_mode=parse_mode)
 
 
 def send_invoice(chat_id, user_id, key):
@@ -454,7 +457,9 @@ def handle_callback(cb):
             show_doc_page(chat_id, msg.get("message_id"), key, int(page))
         return
     text, markup = screen(name, cb["from"], arg)
-    edit_or_send(chat_id, msg.get("message_id"), text, markup)
+    # Главный экран использует HTML-цитаты, остальные экраны — обычный текст
+    parse_mode = "HTML" if name == "menu" else None
+    edit_or_send(chat_id, msg.get("message_id"), text, markup, parse_mode=parse_mode)
 
 
 def handle_start(message, user, payload):
