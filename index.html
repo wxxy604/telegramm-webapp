@@ -6,6 +6,12 @@
     <title>SupplineVPN</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Показываем только активный раздел. Правила продублированы здесь, чтобы не зависеть от кэша styles.css */
+        .screen { display: none !important; }
+        .screen.active { display: block !important; }
+        .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; }
+    </style>
 </head>
 <body>
     <header class="topbar">
