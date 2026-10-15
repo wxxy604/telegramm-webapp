@@ -46,8 +46,6 @@
         <div class="group">
             <div class="row" data-go="pay">
                 <div class="row-icon"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg></div>
-                <div class="row-body"><div class="row-title" data-i18n="renew">Продлить подписку</div><div class="row-sub" data-i18n="renew_sub">Выбрать способ оплаты</div></div>
-                <div class="row-chev">›</div>
     <section class="screen" id="screen-pay">
         <div class="title" data-i18n="pay_title">Оплата</div>
         <div class="subtitle" data-i18n="pay_subtitle">Выберите способ оплаты и тариф</div>
@@ -85,6 +83,29 @@
         <div class="muted-note" id="pay-note" data-i18n="pay_note">Оплата откроется в чате с ботом.</div>
     </section>
 
+
+                <div class="row-body"><div class="row-title" data-i18n="renew">Продлить подписку</div><div class="row-sub" data-i18n="renew_sub">Выбрать способ оплаты</div></div>
+                <div class="row-chev">›</div>
+            </div>
+            <div class="row" data-go="keys">
+                <div class="row-icon"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></svg></div>
+                <div class="row-body"><div class="row-title" data-i18n="my_keys">Мои ключи</div><div class="row-sub" data-i18n="my_keys_sub">Подключение для устройств</div></div>
+                <div class="row-chev">›</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="screen" id="screen-keys">
+        <div class="title" data-i18n="keys_title">Ключи</div>
+        <div class="subtitle" data-i18n="keys_subtitle">Ключи появятся после активации подписки</div>
+        <div class="group"><div class="empty" data-i18n="keys_empty">Ключей пока нет</div></div>
+    </section>
+
+    <section class="screen" id="screen-devices">
+        <div class="title" data-i18n="devices_title">Устройства</div>
+        <div class="subtitle"><span data-i18n="devices_count">Подключено</span>: <span id="device-count">0</span> / 3</div>
+        <div class="group"><div class="empty" data-i18n="devices_empty">Подключённых устройств пока нет</div></div>
+    </section>
     <section class="screen" id="screen-settings">
         <div class="title" data-i18n="settings_title">Настройки</div>
         <div class="subtitle" data-i18n="settings_subtitle">Параметры приложения</div>
@@ -136,24 +157,4 @@
 </body>
 </html>
 
-            </div>
-            <div class="row" data-go="keys">
-                <div class="row-icon"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M14 9l2 2"/></svg></div>
-                <div class="row-body"><div class="row-title" data-i18n="my_keys">Мои ключи</div><div class="row-sub" data-i18n="my_keys_sub">Подключение для устройств</div></div>
-                <div class="row-chev">›</div>
-            </div>
-        </div>
-    </section>
-
-    <section class="screen" id="screen-keys">
-        <div class="title" data-i18n="keys_title">Ключи</div>
-        <div class="subtitle" data-i18n="keys_subtitle">Ключи появятся после активации подписки</div>
-        <div class="group"><div class="empty" data-i18n="keys_empty">Ключей пока нет</div></div>
-    </section>
-
-    <section class="screen" id="screen-devices">
-        <div class="title" data-i18n="devices_title">Устройства</div>
-        <div class="subtitle"><span data-i18n="devices_count">Подключено</span>: <span id="device-count">0</span> / 3</div>
-        <div class="group"><div class="empty" data-i18n="devices_empty">Подключённых устройств пока нет</div></div>
-    </section>
 
