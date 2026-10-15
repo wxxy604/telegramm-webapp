@@ -132,12 +132,13 @@ document.querySelectorAll("[data-toggle]").forEach(el => {
     });
 });
 
-// Документы: полный текст на отдельном экране
+// Документы: полный текст на отдельном экране (текст документа на выбранном языке)
+let currentDoc = null;
 document.querySelectorAll("[data-doc]").forEach(el => {
     el.addEventListener("click", () => {
-        const doc = el.dataset.doc === "terms" ? LEGAL_TERMS : LEGAL_PRIVACY;
-        $("doc-title").textContent = doc.title;
-        $("doc-text").textContent = doc.text;
+        currentDoc = el.dataset.doc === "terms" ? LEGAL_TERMS : LEGAL_PRIVACY;
+        $("doc-title").textContent = currentDoc.title;
+        $("doc-text").textContent = currentDoc.text;
         showTab("doc");
     });
 });
@@ -177,7 +178,61 @@ $("lang-toggle").addEventListener("click", e => {
 });
 document.addEventListener("click", () => closeDrops(null));
 
-// Язык интерфейса RU / EN
+// Язык интерфейса RU / EN: весь интерфейс берётся из словаря
+const I18N_FULL = {
+    ru: {
+        home_subtitle: "Ваш доступ и баланс", home_sub: "Статус подписки", balance: "Баланс",
+        renew: "Продлить подписку", renew_sub: "Выбрать способ оплаты",
+        my_keys: "Мои ключи", my_keys_sub: "Подключение для устройств",
+        keys_title: "Ключи", keys_subtitle: "Ключи появятся после активации подписки", keys_empty: "Ключей пока нет",
+        devices_title: "Устройства", devices_count: "Подключено", devices_empty: "Подключённых устройств пока нет",
+        pay_title: "Оплата", pay_subtitle: "Выберите способ оплаты и тариф", pay_method: "Способ оплаты",
+        method_stars: "Звёзды Telegram", pay_plan: "Тариф",
+        plan_1m: "1 месяц", plan_1m_sub: "30 дней полного доступа",
+        plan_3m: "3 месяца", plan_3m_sub: "90 дней, выгоднее на 10%",
+        plan_12m: "12 месяцев", plan_12m_sub: "365 дней, максимальная выгода",
+        pay_note: "Оплата откроется в чате с ботом.", pay_btn: "Перейти к оплате",
+        settings_title: "Настройки", settings_subtitle: "Параметры приложения",
+        settings_functions: "Функции", set_notify: "Уведомления", set_notify_sub: "Напоминать об окончании подписки",
+        set_theme: "Светлая тема", set_theme_sub: "Переключить оформление",
+        settings_account: "Аккаунт", acc_name: "Имя",
+        settings_docs: "Документы", doc_terms: "Пользовательское соглашение", doc_privacy: "Политика конфиденциальности",
+        back: "Назад",
+        tab_home: "Главная", tab_devices: "Устройства", tab_pay: "Оплата", tab_settings: "Настройки",
+        active: "активна", inactive: "не активна",
+        notif_sub_ends: "Подписка заканчивается через {d} дн.", notif_sub_ended: "Подписка закончилась",
+        notif_trial_ends: "Пробный период заканчивается через {d} дн.", notif_none: "Новых уведомлений нет",
+        lang_label: "RU", sbp_soon: "СБП — скоро", sbp_unavailable: "СБП пока недоступен",
+        pay_opened: "Откройте чат с ботом",
+    },
+    en: {
+        home_subtitle: "Your access and balance", home_sub: "Subscription status", balance: "Balance",
+        renew: "Renew subscription", renew_sub: "Choose payment method",
+        my_keys: "My keys", my_keys_sub: "Connection for devices",
+        keys_title: "Keys", keys_subtitle: "Keys will appear after activation", keys_empty: "No keys yet",
+        devices_title: "Devices", devices_count: "Connected", devices_empty: "No connected devices",
+        pay_title: "Payment", pay_subtitle: "Choose a payment method and plan", pay_method: "Payment method",
+        method_stars: "Telegram Stars", pay_plan: "Plan",
+        plan_1m: "1 month", plan_1m_sub: "30 days of full access",
+        plan_3m: "3 months", plan_3m_sub: "90 days, 10% off",
+        plan_12m: "12 months", plan_12m_sub: "365 days, best value",
+        pay_note: "Payment opens in the bot chat.", pay_btn: "Continue to payment",
+        settings_title: "Settings", settings_subtitle: "App settings",
+        settings_functions: "Features", set_notify: "Notifications", set_notify_sub: "Remind about subscription expiry",
+        set_theme: "Light theme", set_theme_sub: "Switch appearance",
+        settings_account: "Account", acc_name: "Name",
+        settings_docs: "Documents", doc_terms: "Terms of Use", doc_privacy: "Privacy Policy",
+        back: "Back",
+        tab_home: "Home", tab_devices: "Devices", tab_pay: "Payment", tab_settings: "Settings",
+        active: "active", inactive: "inactive",
+        notif_sub_ends: "Subscription ends in {d} days", notif_sub_ended: "Subscription has ended",
+        notif_trial_ends: "Trial ends in {d} days", notif_none: "No new notifications",
+        lang_label: "EN", sbp_soon: "SBP — soon", sbp_unavailable: "SBP is not available yet",
+        pay_opened: "Open the bot chat",
+    },
+};
+
+// Старый словарь уведомлений/статусов оставлен для совместимости
 const I18N = {
     ru: {
         notif_sub_ends: "Подписка заканчивается через {d} дн.",
@@ -213,21 +268,23 @@ const I18N = {
 let lang = localStorage.getItem("lang") || "ru";
 const T = () => I18N[lang];
 
-// Статические тексты с data-i18n
+// Переводим весь интерфейс: каждый элемент с data-i18n получает текст выбранного языка
 function applyLang() {
+    const dict = I18N_FULL[lang];
     document.documentElement.lang = lang;
     document.querySelectorAll("[data-i18n]").forEach(el => {
-        const v = T()[el.dataset.i18n];
+        const v = dict[el.dataset.i18n];
         if (v) el.textContent = v;
     });
-    $("lang-label").textContent = T().lang_label;
-    const note = $("pay-note");
-    if (note) note.textContent = T().pay_note;
+    $("lang-label").textContent = dict.lang_label;
     document.querySelectorAll("[data-lang]").forEach(b => {
         b.classList.toggle("active", b.dataset.lang === lang);
     });
     renderPayment();
     renderNotifications();
+    renderStatus();
+    // Заголовок выбранного экрана документа
+    if (currentDoc) $("doc-title").textContent = currentDoc.title;
 }
 document.querySelectorAll("[data-lang]").forEach(btn => {
     btn.addEventListener("click", e => {
