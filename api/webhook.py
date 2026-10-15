@@ -182,7 +182,9 @@ def welcome_text(user, record):
         f"<b>Привет, {first}! Добро пожаловать в SupplineVPN</b>\n\n"
         "<blockquote>SupplineVPN обеспечивает стабильное подключение, защиту трафика в публичных сетях "
         "и работу на 3 устройствах одной подпиской.</blockquote>\n\n"
-        f"<blockquote><b>Статус вашей подписки:</b>\n{html_escape(paid_status(record))}</blockquote>"
+        "\u00a0\n\n"
+        "<blockquote><b>Статус вашей подписки:</b></blockquote>\n"
+        f"<blockquote>{html_escape(paid_status(record))}</blockquote>"
     )
 
 
