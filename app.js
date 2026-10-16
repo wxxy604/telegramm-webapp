@@ -386,6 +386,13 @@ let currentServer = null;
 function renderServers() {
     const list = $("servers-list");
     list.innerHTML = "";
+    if (serversError) {
+        const el = document.createElement("div");
+        el.className = "empty";
+        el.textContent = "Не удалось загрузить серверы. Откройте приложение заново.";
+        list.appendChild(el);
+        return;
+    }
     if (!serversAccess) {
         const el = document.createElement("div");
         el.className = "empty";
@@ -411,20 +418,31 @@ function renderServers() {
     });
 }
 
+let serversError = false;
+
 async function loadServers() {
     if (!user || !tg || !tg.initData) {
+        serversError = false;
         renderServers();
         return;
     }
+    // Таймаут: запрос не может висеть бесконечно, иначе будет вечная загрузка
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     try {
-        const r = await fetch(`${SERVERS_API}&init=${encodeURIComponent(tg.initData)}`, { cache: "no-store" });
-        if (r.ok) {
-            const data = await r.json();
-            servers = data.servers || [];
-            serversAccess = !!data.access;
-        }
+        const r = await fetch(`${SERVERS_API}&init=${encodeURIComponent(tg.initData)}`, {
+            cache: "no-store",
+            signal: controller.signal,
+        });
+        if (!r.ok) throw new Error("bad status " + r.status);
+        const data = await r.json();
+        servers = data.servers || [];
+        serversAccess = !!data.access;
+        serversError = false;
     } catch (e) {
-        // Нет связи: список остаётся пустым
+        serversError = true;
+    } finally {
+        clearTimeout(timer);
     }
     renderServers();
 }
@@ -463,6 +481,7 @@ function closeSheet() {
 }
 
 $("sheet-backdrop").addEventListener("click", closeSheet);
+$("sheet").addEventListener("click", e => e.stopPropagation());
 
 async function copyText(text) {
     try {
