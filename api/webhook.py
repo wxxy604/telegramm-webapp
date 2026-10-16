@@ -251,9 +251,10 @@ def server_detail(index):
     lines = [f"Сервер: {s['name']} · {s['ping']} мс", "", "Инструкция по приложениям:"]
     for title, app, how in APPS.values():
         lines.append(f"• {title}: {app}. {how}")
-    lines += ["", "Ключ (нажмите «Скопировать» и вставьте в приложение):"]
+    lines += ["", "Ключ (нажмите на него, чтобы скопировать, и вставьте в приложение):"]
+    # Ключ отдельным текстом в <code>: по нажатию Telegram копирует его целиком.
+    # Кнопка copy_text здесь не используется: Telegram принимает в ней не больше 256 символов.
     markup = {"inline_keyboard": [
-        [{"text": "📋 Скопировать ключ", "copy_text": {"text": s["uri"]}}],
         [{"text": "◀️ К серверам", "callback_data": f"srvp:{page}"}],
     ]}
     return "\n".join(lines) + f"\n<code>{html_escape(s['uri'])}</code>", markup
