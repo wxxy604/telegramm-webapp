@@ -17,7 +17,7 @@ let selectedPlan = "1m";
 const PRICES = {
     crypto: { "1m": "2 USDT", "3m": "5 USDT", "12m": "18 USDT" },
     stars:  { "1m": "150 ⭐", "3m": "400 ⭐", "12m": "1 400 ⭐" },
-    sbp:    { "1m": "199 ₽", "3m": "499 ₽", "12m": "1 490 ₽" },
+    sbp:    { "1m": "100 ₽", "3m": "250 ₽", "12m": "900 ₽" },
 };
 const METHOD_NAMES = { crypto: "CryptoBot (USDT)", stars: "Звёзды Telegram", sbp: "СБП" };
 
