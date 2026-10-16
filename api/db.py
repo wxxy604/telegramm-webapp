@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from urllib import request
@@ -80,3 +81,51 @@ def register_referral(new_user_id, referrer_id):
     save_user(referrer_id, referrer)
     add_trial_days(referrer_id, 3)
     return True
+
+
+def _config_id(uri):
+    return hashlib.sha1(uri.encode("utf-8")).hexdigest()[:16]
+
+
+def add_configs(uris):
+    """Добавляет VPN-конфиги в свободный пул. Дубликаты пропускаются. Возвращает число новых."""
+    added = 0
+    for uri in uris:
+        uri = uri.strip()
+        if not uri:
+            continue
+        cid = _config_id(uri)
+        if _cmd("SET", f"config:{cid}", json.dumps({"uri": uri}, ensure_ascii=False), "NX") == "OK":
+            _cmd("SADD", "pool:free", cid)
+            added += 1
+    return added
+
+
+def get_key(user_id):
+    """Возвращает ссылку конфига пользователя. Если ключа ещё нет, берёт свободный из пула.
+    Возвращает None, если свободных конфигов нет."""
+    user = get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    cid = user.get("config_id")
+    if cid:
+        raw = _cmd("GET", f"config:{cid}")
+        if raw:
+            return json.loads(raw)["uri"]
+    cid = _cmd("SPOP", "pool:free")
+    if not cid:
+        return None
+    raw = _cmd("GET", f"config:{cid}")
+    if not raw:
+        return None
+    user["config_id"] = cid
+    save_user(user_id, user)
+    return json.loads(raw)["uri"]
+
+
+def release_key(user_id):
+    """Возвращает конфиг пользователя в пул, когда доступ закончился."""
+    user = get_user(user_id)
+    if not user or not user.get("config_id"):
+        return
+    cid = user.pop("config_id")
+    _cmd("SADD", "pool:free", cid)
+    save_user(user_id, user)
