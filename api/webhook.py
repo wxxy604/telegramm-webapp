@@ -218,10 +218,17 @@ APPS = {
 SERVERS_PER_PAGE = 5
 
 
-def servers_page(page):
-    """Возвращает (текст, разметка) страницы списка серверов по SERVERS_PER_PAGE штук.
-    callback_data содержит глобальный номер сервера, поэтому страницы не путаются."""
-    servers = db.get_best_servers()
+def user_servers(user_id):
+    """Персональный список серверов пользователя: 3–5 лучших по пингу, без повторов у других."""
+    return db.assign_servers(user_id, count_min=3, count_max=5)
+
+
+def servers_page(user_id, page):
+    """Страница персонального списка серверов по SERVERS_PER_PAGE штук.
+    callback_data содержит индекс внутри списка пользователя."""
+    servers = user_servers(user_id)
+    if not servers:
+        return "Серверы\n\nПодходящих серверов сейчас нет. Попробуйте позже.", back_markup()
     total_pages = max(1, -(-len(servers) // SERVERS_PER_PAGE))
     page = max(0, min(page, total_pages - 1))
     start = page * SERVERS_PER_PAGE
@@ -237,13 +244,13 @@ def servers_page(page):
         nav.append({"text": "Вперёд ▶️", "callback_data": f"srvp:{page + 1}"})
     rows.append(nav)
     rows.append([{"text": "◀️ Назад в меню", "callback_data": "menu"}])
-    text = "Серверы\n\nВыберите сервер (от быстрого к медленному). Пинг указан справа."
+    text = f"Ваши серверы: {len(servers)} шт. Выберите сервер (от быстрого к медленному)."
     return text, {"inline_keyboard": rows}
 
 
-def server_detail(index):
-    """Текст инструкции и кнопки для сервера с глобальным номером index."""
-    servers = db.get_best_servers()
+def server_detail(user_id, index):
+    """Текст инструкции и ключа для сервера index из персонального списка пользователя."""
+    servers = user_servers(user_id)
     if index < 0 or index >= len(servers):
         return "Сервер не найден. Откройте список серверов заново.", back_markup()
     s = servers[index]
@@ -358,11 +365,9 @@ def screen(name, user, arg=""):
         return f"Тариф «{title}» — {stars} ⭐\n\nОплата звёздами Telegram внутри бота.", markup
     if name == "keys":
         if not has_access(record):
-            db.release_key(uid)
+            db.release_servers(uid)
             return "Ключи\n\nДоступа сейчас нет. Оформите подписку или пробный период в разделе «Купить».", back_markup()
-        if not db.get_best_servers():
-            return "Серверы\n\nСписок серверов ещё не готов. Попробуйте позже.", back_markup()
-        return servers_page(0)
+        return servers_page(uid, 0)
     if name == "devices":
         return "Устройства\n\nПодключено: 0 из 3.", back_markup()
     if name == "referral":
@@ -549,18 +554,20 @@ def handle_callback(cb):
         edit_or_send(chat_id, msg.get("message_id"), "📄 Документы\n\nВыберите документ:", docs_markup())
         return
     if name == "srvp" and arg.isdigit():
-        if not has_access(db.get_user(cb["from"]["id"]) or {}):
+        uid = cb["from"]["id"]
+        if not has_access(db.get_user(uid) or {}):
             edit_or_send(chat_id, msg.get("message_id"), "Серверы доступны с подпиской или пробным периодом.", back_markup())
             return
-        text, markup = servers_page(int(arg))
+        text, markup = servers_page(uid, int(arg))
         edit_or_send(chat_id, msg.get("message_id"), text, markup)
         return
     if name == "srv" and arg.isdigit():
-        if not has_access(db.get_user(cb["from"]["id"]) or {}):
+        uid = cb["from"]["id"]
+        if not has_access(db.get_user(uid) or {}):
             edit_or_send(chat_id, msg.get("message_id"), "Серверы доступны с подпиской или пробным периодом.", back_markup())
             return
         # Инструкция отправляется новым сообщением: список остаётся на месте
-        text, markup = server_detail(int(arg))
+        text, markup = server_detail(uid, int(arg))
         send(chat_id, text, markup, parse_mode="HTML")
         return
     if name == "noop":
@@ -641,13 +648,13 @@ class handler(BaseHTTPRequestHandler):
         self._reply(200, "bot is alive")
 
     def _servers(self):
-        """Список 10 лучших серверов для мини приложения. Без подписки или пробного периода — пусто."""
+        """Персональный список серверов пользователя для мини приложения. Без доступа — пусто."""
         uid = request_user_id(self.path)
         servers = []
         if uid and has_access(db.get_user(uid) or {}):
             servers = [
                 {"name": s["name"], "ping": s["ping"], "uri": s["uri"]}
-                for s in db.get_best_servers()[:10]
+                for s in user_servers(uid)
             ]
         body = json.dumps({"servers": servers, "access": bool(servers)}, ensure_ascii=False)
         self.send_response(200)

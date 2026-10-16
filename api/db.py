@@ -7,16 +7,36 @@ REDIS_URL = os.getenv("UPSTASH_REDIS_REST_URL", "")
 REDIS_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 
 
-def _cmd(*args):
-    """Выполняет команду Redis через Upstash REST API и возвращает результат."""
+def _cmd(*args, retries=3):
+    """Выполняет команду Redis через Upstash REST API и возвращает результат.
+    При сетевом таймауте повторяет запрос до retries раз."""
+    last_exc = None
+    for attempt in range(retries):
+        req = request.Request(
+            REDIS_URL,
+            data=json.dumps(list(args)).encode("utf-8"),
+            headers={"Authorization": f"Bearer {REDIS_TOKEN}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=20) as resp:
+                return json.load(resp).get("result")
+        except (TimeoutError, OSError) as exc:
+            last_exc = exc
+            time.sleep(1 + attempt)
+    raise last_exc
+
+
+def _pipeline(commands):
+    """Выполняет несколько команд Redis одним запросом (Upstash /pipeline)."""
     req = request.Request(
-        REDIS_URL,
-        data=json.dumps(list(args)).encode("utf-8"),
+        REDIS_URL.rstrip("/") + "/pipeline",
+        data=json.dumps(commands).encode("utf-8"),
         headers={"Authorization": f"Bearer {REDIS_TOKEN}", "Content-Type": "application/json"},
         method="POST",
     )
-    with request.urlopen(req, timeout=10) as resp:
-        return json.load(resp).get("result")
+    with request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
 
 
 def get_user(user_id):
@@ -88,16 +108,27 @@ def _config_id(uri):
 
 
 def add_configs(uris):
-    """Добавляет VPN-конфиги в свободный пул. Дубликаты пропускаются. Возвращает число новых."""
-    added = 0
+    """Добавляет VPN-конфиги в свободный пул. Дубликаты пропускаются. Возвращает число новых.
+    Записи идут пачками одним запросом, чтобы не перегружать Upstash."""
+    items = []
     for uri in uris:
         uri = uri.strip()
-        if not uri:
-            continue
-        cid = _config_id(uri)
-        if _cmd("SET", f"config:{cid}", json.dumps({"uri": uri}, ensure_ascii=False), "NX") == "OK":
-            _cmd("SADD", "pool:free", cid)
-            added += 1
+        if uri:
+            items.append((_config_id(uri), uri))
+    added = 0
+    chunk = 50
+    for start in range(0, len(items), chunk):
+        batch = items[start:start + chunk]
+        commands = [["SET", f"config:{cid}", json.dumps({"uri": uri}, ensure_ascii=False), "NX"]
+                    for cid, uri in batch]
+        results = _pipeline(commands)
+        new_ids = []
+        for (cid, _), res in zip(batch, results):
+            if res.get("result") == "OK":
+                new_ids.append(cid)
+        if new_ids:
+            _pipeline([["SADD", "pool:free", cid] for cid in new_ids])
+            added += len(new_ids)
     return added
 
 
@@ -124,6 +155,63 @@ def get_key(user_id):
 def save_best_servers(servers):
     """Сохраняет список лучших серверов (уже отсортирован по пингу): [{"name", "uri", "ping"}]."""
     _cmd("SET", "servers:best", json.dumps(servers, ensure_ascii=False))
+
+
+def save_servers_pool(servers):
+    """Сохраняет полный пул рабочих серверов (после проверки). Старый пул заменяется целиком."""
+    _cmd("SET", "servers:pool", json.dumps(servers, ensure_ascii=False))
+    # Для совместимости: лучшие 10 по пингу тоже обновляются
+    _cmd("SET", "servers:best", json.dumps(servers[:10], ensure_ascii=False))
+
+
+def get_servers_pool():
+    raw = _cmd("GET", "servers:pool")
+    return json.loads(raw) if raw else []
+
+
+def assign_servers(user_id, count_min=3, count_max=5):
+    """Выдаёт пользователю серверы по пингу: от count_min до count_max штук.
+    Сервер, выданный одному пользователю, помечается в servers:taken и другим не выдаётся.
+    Уже выданные сервера сохраняются за пользователем и при пересборке пула не меняются.
+    Возвращает список серверов пользователя (словари из пула)."""
+    user = get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    current = list(user.get("server_ids", []))
+    pool = get_servers_pool()
+    by_id = {_sid(s): s for s in pool}
+    # Сервера, которые больше не в пуле (сломались), отбрасываем и освобождаем
+    for sid in list(current):
+        if sid not in by_id:
+            current.remove(sid)
+            _cmd("SREM", "servers:taken", sid)
+    if len(current) < count_max:
+        need = count_max - len(current)
+        for s in pool:  # пул уже отсортирован по пингу
+            if need <= 0:
+                break
+            sid = _sid(s)
+            if sid in current:
+                continue
+            if _cmd("SADD", "servers:taken", sid) == 1:
+                current.append(sid)
+                need -= 1
+    user["server_ids"] = current
+    save_user(user_id, user)
+    return [by_id[sid] for sid in current]
+
+
+def release_servers(user_id):
+    """Освобождает серверы пользователя (когда у него закончился доступ), чтобы их могли выдать другим."""
+    user = get_user(user_id)
+    if not user or not user.get("server_ids"):
+        return
+    for sid in user.pop("server_ids"):
+        _cmd("SREM", "servers:taken", sid)
+    save_user(user_id, user)
+
+
+def _sid(server):
+    """Уникальный идентификатор сервера: хэш ссылки."""
+    return _config_id(server["uri"])
 
 
 def get_best_servers():
