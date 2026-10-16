@@ -351,12 +351,10 @@ function renderStatus() {
     const paid = state.paid_until > state.now;
     const trial = state.trial_until > state.now;
     const days = daysLeft(state.paid_until);
-    $("home-sub").textContent = paid
-        ? `${T().active}, ${days} дн.`
-        : T().inactive;
-    $("home-trial").textContent = trial
-        ? `${T().active}, ${daysLeft(state.trial_until)} дн.`
-        : T().inactive;
+    const subEl = $("home-sub");
+    const trialEl = $("home-trial");
+    if (subEl) subEl.textContent = paid ? `${T().active}, ${days} дн.` : T().inactive;
+    if (trialEl) trialEl.textContent = trial ? `${T().active}, ${daysLeft(state.trial_until)} дн.` : T().inactive;
 }
 
 async function loadState() {
@@ -509,11 +507,17 @@ $("sheet-copy").addEventListener("click", async () => {
     haptic();
 });
 
-renderSettings();
-renderPayment();
-applyLang();
-renderStatus();
-renderNotifications();
-loadState();
+// Серверы грузим первыми и отдельно: ошибка в другом блоке не должна их блокировать
 loadServers();
+
+try {
+    renderSettings();
+    renderPayment();
+    applyLang();
+    renderStatus();
+    renderNotifications();
+    loadState();
+} catch (e) {
+    console.error("init error:", e);
+}
 showTab("home");
