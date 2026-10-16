@@ -121,6 +121,17 @@ def get_key(user_id):
     return json.loads(raw)["uri"]
 
 
+def save_best_servers(servers):
+    """Сохраняет список лучших серверов (уже отсортирован по пингу): [{"name", "uri", "ping"}]."""
+    _cmd("SET", "servers:best", json.dumps(servers, ensure_ascii=False))
+
+
+def get_best_servers():
+    """Возвращает список лучших серверов или пустой список, если парсер ещё не запускался."""
+    raw = _cmd("GET", "servers:best")
+    return json.loads(raw) if raw else []
+
+
 def release_key(user_id):
     """Возвращает конфиг пользователя в пул, когда доступ закончился."""
     user = get_user(user_id)

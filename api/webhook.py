@@ -204,19 +204,42 @@ def trial_status(user):
     return f"активен, осталось {days} дн."
 
 
+APPS = {
+    "ios": ("iPhone / iPad", "Streisand или V2Box (App Store)", "Откройте приложение, нажмите «+» → «Вставить из буфера». Ключ импортируется, выберите сервер и включите подключение."),
+    "android": ("Android", "v2rayNG или Hiddify (Google Play)", "Откройте приложение, нажмите «+» → «Импорт из буфера обмена». Выберите сервер и включите подключение."),
+    "windows": ("Windows", "Hiddify или v2rayN", "Откройте приложение, нажмите «Вставить ключ» или «Импорт из буфера». Выберите сервер и подключитесь."),
+    "macos": ("macOS", "Streisand или Hiddify", "Откройте приложение, выберите «Добавить из буфера». Выберите сервер и включите подключение."),
+}
+
+
+def server_list_markup():
+    rows = []
+    for i, s in enumerate(db.get_best_servers()[:10]):
+        rows.append([{"text": f"{s['name']} · {s['ping']} мс", "callback_data": f"srv:{i}"}])
+    rows.append([{"text": "◀️ Назад в меню", "callback_data": "menu"}])
+    return {"inline_keyboard": rows}
+
+
+def server_detail(index):
+    """Текст инструкции и кнопка «Скопировать» для сервера с номером index (0–9)."""
+    servers = db.get_best_servers()[:10]
+    if index < 0 or index >= len(servers):
+        return "Сервер не найден. Откройте список серверов заново.", back_markup()
+    s = servers[index]
+    lines = [f"Сервер: {s['name']} · {s['ping']} мс", "", "Инструкция по приложениям:"]
+    for title, app, how in APPS.values():
+        lines.append(f"• {title}: {app}. {how}")
+    lines += ["", "Ключ (нажмите «Скопировать» и вставьте в приложение):"]
+    markup = {"inline_keyboard": [
+        [{"text": "📋 Скопировать ключ", "copy_text": {"text": s["uri"]}}],
+        [{"text": "◀️ К серверам", "callback_data": "keys"}],
+    ]}
+    return "\n".join(lines) + f"\n<code>{html_escape(s['uri'])}</code>", markup
+
+
 def has_access(user):
     now = int(time.time())
     return user.get("paid_until", 0) > now or user.get("trial_until", 0) > now
-
-
-def send_key(chat_id, user_id):
-    """Отправляет пользователю его ключ или сообщение, что свободных ключей пока нет."""
-    uri = db.get_key(user_id)
-    if uri:
-        send(chat_id, f"Ваш ключ:\n<code>{html_escape(uri)}</code>\n\nСкопируйте ссылку и вставьте её в VPN-клиент.",
-             back_markup(), parse_mode="HTML")
-    else:
-        send(chat_id, "Свободных ключей сейчас нет. Ключ появится в разделе «Мои ключи» автоматически.", back_markup())
 
 
 def screen(name, user, arg=""):
@@ -280,10 +303,10 @@ def screen(name, user, arg=""):
         if not has_access(record):
             db.release_key(uid)
             return "Ключи\n\nДоступа сейчас нет. Оформите подписку или пробный период в разделе «Купить».", back_markup()
-        uri = db.get_key(uid)
-        if not uri:
-            return "Ключи\n\nСвободных ключей сейчас нет. Ключ появится здесь автоматически, как только он будет добавлен.", back_markup()
-        return f"Ваш ключ:\n<code>{html_escape(uri)}</code>\n\nСкопируйте ссылку и вставьте её в VPN-клиент.", back_markup()
+        servers = db.get_best_servers()
+        if not servers:
+            return "Серверы\n\nСписок серверов ещё не готов. Попробуйте позже.", back_markup()
+        return "Серверы\n\nВыберите сервер (от быстрого к медленному). Ниже — пинг до сервера.", server_list_markup()
     if name == "devices":
         return "Устройства\n\nПодключено: 0 из 3.", back_markup()
     if name == "referral":
@@ -374,7 +397,7 @@ def handle_successful_payment(message):
     _, days, _ = PLANS[key]
     db.extend_paid(user_id, days)
     send(message["chat"]["id"], f"Оплата прошла. Подписка продлена на {days} дн. Проверьте статус в разделе «Подписка».", reply_keyboard())
-    send_key(message["chat"]["id"], user_id)
+
 
 
 def handle_web_app_data(message):
@@ -446,7 +469,7 @@ def crypto_check(chat_id, user_id, invoice_id, key):
     _, days, _ = PLANS[key]
     db.extend_paid(user_id, days)
     send(chat_id, f"Оплата USDT получена. Подписка продлена на {days} дн.", reply_keyboard())
-    send_key(chat_id, user_id)
+
 
 
 def handle_callback(cb):
@@ -469,6 +492,11 @@ def handle_callback(cb):
     if name == "docs":
         edit_or_send(chat_id, msg.get("message_id"), "📄 Документы\n\nВыберите документ:", docs_markup())
         return
+    if name == "srv":
+        if arg.isdigit():
+            text, markup = server_detail(int(arg))
+            edit_or_send(chat_id, msg.get("message_id"), text, markup, parse_mode="HTML")
+        return
     if name == "noop":
         return
     if name == "doc" and arg in DOCS:
@@ -481,7 +509,9 @@ def handle_callback(cb):
         return
     text, markup = screen(name, cb["from"], arg)
     # Главный экран использует HTML-цитаты, остальные экраны — обычный текст
-    parse_mode = "HTML" if name in ("menu", "keys") else None
+    parse_mode = "HTML" if name == "menu" else None
+    if name == "keys":
+        parse_mode = None
     edit_or_send(chat_id, msg.get("message_id"), text, markup, parse_mode=parse_mode)
 
 
@@ -502,8 +532,6 @@ def handle_start(message, user, payload):
     # Приветствие со статусом и преимуществами сразу, нижняя клавиатура снимается
     record = db.get_user(user["id"]) or {}
     send(chat_id, welcome_text(user, record), menu_markup(), parse_mode="HTML")
-    if note != "С возвращением!":
-        send_key(chat_id, user["id"])
     call("sendMessage", {"chat_id": chat_id, "text": "\u200b", "reply_markup": {"remove_keyboard": True}})
 
 
@@ -538,10 +566,26 @@ def handle_message(message):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         # Данные для мини приложения: статус подписки и пробного периода (без секретов)
+        if "servers=" in self.path:
+            self._servers()
+            return
         if "uid=" in self.path:
             self._me()
             return
         self._reply(200, "bot is alive")
+
+    def _servers(self):
+        """Список 10 лучших серверов для мини приложения: имя, пинг и ссылка для копирования."""
+        servers = [
+            {"name": s["name"], "ping": s["ping"], "uri": s["uri"]}
+            for s in db.get_best_servers()[:10]
+        ]
+        body = json.dumps({"servers": servers}, ensure_ascii=False)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
 
     def _me(self):
         from urllib.parse import urlparse, parse_qs
