@@ -360,9 +360,9 @@ function renderStatus() {
 }
 
 async function loadState() {
-    if (!user) return;
+    if (!user || !tg || !tg.initData) return;
     try {
-        const r = await fetch(`${BOT_API}?uid=${user.id}`, { cache: "no-store" });
+        const r = await fetch(`${BOT_API}?init=${encodeURIComponent(tg.initData)}`, { cache: "no-store" });
         if (r.ok) state = await r.json();
     } catch (e) {
         // Нет связи с сервером: оставляем пустое состояние
@@ -412,12 +412,12 @@ function renderServers() {
 }
 
 async function loadServers() {
-    if (!user) {
+    if (!user || !tg || !tg.initData) {
         renderServers();
         return;
     }
     try {
-        const r = await fetch(`${SERVERS_API}&uid=${user.id}`, { cache: "no-store" });
+        const r = await fetch(`${SERVERS_API}&init=${encodeURIComponent(tg.initData)}`, { cache: "no-store" });
         if (r.ok) {
             const data = await r.json();
             servers = data.servers || [];
