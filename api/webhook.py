@@ -1,9 +1,12 @@
+import hashlib
+import hmac
 import json
 import os
 import sys
 import time
 from http.server import BaseHTTPRequestHandler
 from urllib import error, request
+from urllib.parse import parse_qs, parse_qsl, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db  # noqa: E402
@@ -254,6 +257,40 @@ def server_detail(index):
         [{"text": "◀️ К серверам", "callback_data": f"srvp:{page}"}],
     ]}
     return "\n".join(lines) + f"\n<code>{html_escape(s['uri'])}</code>", markup
+
+
+INIT_DATA_MAX_AGE = 24 * 3600  # секунд, после этого initData считается устаревшим
+
+
+def verify_init_data(init_data, max_age=INIT_DATA_MAX_AGE):
+    """Проверяет подпись initData от Telegram Mini App (алгоритм из документации Telegram).
+    Возвращает ID пользователя (строкой) или None, если подпись неверна, данные устарели или их нет."""
+    if not init_data or not BOT_TOKEN:
+        return None
+    data = dict(parse_qsl(init_data, keep_blank_values=True))
+    received_hash = data.pop("hash", "")
+    if not received_hash:
+        return None
+    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+    expected = hmac.new(secret_key, check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, received_hash):
+        return None
+    try:
+        auth_date = int(data.get("auth_date", "0"))
+        user = json.loads(data.get("user", "{}"))
+    except (ValueError, TypeError):
+        return None
+    if time.time() - auth_date > max_age:
+        return None
+    uid = user.get("id") if isinstance(user, dict) else None
+    return str(uid) if uid else None
+
+
+def request_user_id(path):
+    """Достаёт проверенный ID пользователя из параметра init в адресе запроса."""
+    init_data = parse_qs(urlparse(path).query).get("init", [""])[0]
+    return verify_init_data(init_data)
 
 
 def has_access(user):
@@ -597,17 +634,16 @@ class handler(BaseHTTPRequestHandler):
         if "servers=" in self.path:
             self._servers()
             return
-        if "uid=" in self.path:
+        if "init=" in self.path:
             self._me()
             return
         self._reply(200, "bot is alive")
 
     def _servers(self):
         """Список 10 лучших серверов для мини приложения. Без подписки или пробного периода — пусто."""
-        from urllib.parse import urlparse, parse_qs
-        uid = parse_qs(urlparse(self.path).query).get("uid", [""])[0]
+        uid = request_user_id(self.path)
         servers = []
-        if uid.isdigit() and has_access(db.get_user(uid) or {}):
+        if uid and has_access(db.get_user(uid) or {}):
             servers = [
                 {"name": s["name"], "ping": s["ping"], "uri": s["uri"]}
                 for s in db.get_best_servers()[:10]
@@ -620,10 +656,9 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(body.encode("utf-8"))
 
     def _me(self):
-        from urllib.parse import urlparse, parse_qs
-        uid = parse_qs(urlparse(self.path).query).get("uid", [""])[0]
-        if not uid.isdigit():
-            self._reply(400, "bad uid")
+        uid = request_user_id(self.path)
+        if not uid:
+            self._reply(403, "forbidden")
             return
         record = db.get_user(uid) or {}
         now = int(time.time())
