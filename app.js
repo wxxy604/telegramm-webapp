@@ -371,10 +371,99 @@ async function loadState() {
     renderNotifications();
 }
 
+// Серверы: 10 лучших по пингу с сервера бота
+const SERVERS_API = "https://telegramm-webapp.vercel.app/api/webhook?servers=1";
+const APPS_GUIDE = [
+    { os: "iPhone / iPad", app: "Streisand или V2Box (App Store)", how: "Откройте приложение, нажмите «+» → «Вставить из буфера». Выберите сервер и включите подключение." },
+    { os: "Android", app: "v2rayNG или Hiddify (Google Play)", how: "Откройте приложение, нажмите «+» → «Импорт из буфера обмена». Выберите сервер и включите подключение." },
+    { os: "Windows", app: "Hiddify или v2rayN", how: "Откройте приложение, нажмите «Вставить ключ» или «Импорт из буфера». Выберите сервер и подключитесь." },
+    { os: "macOS", app: "Streisand или Hiddify", how: "Откройте приложение, выберите «Добавить из буфера». Выберите сервер и включите подключение." },
+];
+let servers = [];
+let currentServer = null;
+
+function renderServers() {
+    const list = $("servers-list");
+    list.innerHTML = "";
+    if (servers.length === 0) {
+        const el = document.createElement("div");
+        el.className = "empty";
+        el.textContent = "Серверы пока не готовы";
+        list.appendChild(el);
+        return;
+    }
+    servers.forEach((s, i) => {
+        const row = document.createElement("div");
+        row.className = "row server-row";
+        row.innerHTML = `<div class="row-body"><div class="row-title"></div></div><div class="server-ping"></div>`;
+        row.querySelector(".row-title").textContent = s.name;
+        row.querySelector(".server-ping").textContent = s.ping + " мс";
+        row.addEventListener("click", () => openSheet(i));
+        list.appendChild(row);
+    });
+}
+
+async function loadServers() {
+    try {
+        const r = await fetch(SERVERS_API, { cache: "no-store" });
+        if (r.ok) servers = (await r.json()).servers || [];
+    } catch (e) {
+        // Нет связи: список остаётся пустым
+    }
+    renderServers();
+}
+
+$("servers-toggle").addEventListener("click", () => {
+    $("servers-box").classList.toggle("open");
+    haptic();
+});
+
+function openSheet(index) {
+    currentServer = servers[index];
+    if (!currentServer) return;
+    $("sheet-title").textContent = currentServer.name;
+    $("sheet-meta").textContent = "Пинг: " + currentServer.ping + " мс";
+    const apps = $("sheet-apps");
+    apps.innerHTML = "";
+    APPS_GUIDE.forEach(g => {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = `<div class="row-body"><div class="row-title"></div><div class="row-sub"></div></div>`;
+        row.querySelector(".row-title").textContent = g.os;
+        row.querySelector(".row-sub").textContent = g.app;
+        apps.appendChild(row);
+    });
+    $("sheet-howto").textContent = APPS_GUIDE.map(g => g.os + ": " + g.how).join("\n\n");
+    $("sheet").classList.add("open");
+    $("sheet-backdrop").classList.add("show");
+    $("sheet").setAttribute("aria-hidden", "false");
+    haptic();
+}
+
+function closeSheet() {
+    $("sheet").classList.remove("open");
+    $("sheet-backdrop").classList.remove("show");
+    $("sheet").setAttribute("aria-hidden", "true");
+}
+
+$("sheet-backdrop").addEventListener("click", closeSheet);
+
+$("sheet-copy").addEventListener("click", async () => {
+    if (!currentServer) return;
+    try {
+        await navigator.clipboard.writeText(currentServer.uri);
+        toast("Ключ скопирован");
+    } catch (e) {
+        toast("Не удалось скопировать");
+    }
+    haptic();
+});
+
 renderSettings();
 renderPayment();
 applyLang();
 renderStatus();
 renderNotifications();
 loadState();
+loadServers();
 showTab("home");

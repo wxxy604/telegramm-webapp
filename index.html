@@ -43,6 +43,15 @@
             <div class="card-label" data-i18n="balance">Баланс</div>
             <div class="card-value" id="home-balance">0 ₽</div>
         </div>
+        <div class="servers-box" id="servers-box">
+            <button type="button" class="servers-head" id="servers-toggle">
+                <span class="servers-title">Серверы</span>
+                <span class="servers-caret">▾</span>
+            </button>
+            <div class="servers-body" id="servers-body">
+                <div class="group" id="servers-list"><div class="empty">Загрузка…</div></div>
+            </div>
+        </div>
         <div class="group">
             <div class="row" data-go="pay">
                 <div class="row-icon"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg></div>
@@ -142,6 +151,18 @@
     </section>
 
     </main>
+
+    <div class="sheet-backdrop" id="sheet-backdrop"></div>
+    <div class="sheet" id="sheet" aria-hidden="true">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title" id="sheet-title">Сервер</div>
+        <div class="sheet-meta" id="sheet-meta"></div>
+        <div class="section-label">Какое приложение выбрать</div>
+        <div class="group" id="sheet-apps"></div>
+        <div class="section-label">Куда вставить ключ</div>
+        <div class="group"><div class="doc-text" id="sheet-howto"></div></div>
+        <button type="button" class="btn" id="sheet-copy">Скопировать ключ</button>
+    </div>
 
     <nav class="tabbar">
         <button class="active" data-tab="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1z"/></svg><span data-i18n="tab_home">Главная</span></button>

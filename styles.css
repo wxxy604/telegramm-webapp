@@ -255,3 +255,41 @@ body[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.55); }
     font-size: 13px; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; white-space: nowrap;
 }
 .toast.show { opacity: 1; }
+
+/* Блок «Серверы» на главном экране: сворачивается и раскрывается плавно */
+.servers-box { margin-bottom: 12px; }
+.servers-head {
+    width: 100%; height: 52px; display: flex; justify-content: space-between; align-items: center;
+    padding: 0 16px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.servers-caret { color: var(--hint); transition: transform 0.3s ease; }
+.servers-box.open .servers-caret { transform: rotate(180deg); }
+.servers-body {
+    display: grid; grid-template-rows: 0fr; opacity: 0;
+    transition: grid-template-rows 0.35s ease, opacity 0.3s ease;
+}
+.servers-box.open .servers-body { grid-template-rows: 1fr; opacity: 1; }
+.servers-body > .group { min-height: 0; overflow: hidden; margin-top: 8px; }
+.server-row { cursor: pointer; }
+.server-ping { font-size: 13px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+
+/* Нижняя шторка с инструкцией: плавное появление снизу */
+.sheet-backdrop {
+    position: fixed; inset: 0; z-index: 150; background: rgba(0,0,0,.45);
+    opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+}
+.sheet-backdrop.show { opacity: 1; pointer-events: auto; }
+.sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 160;
+    max-height: 86vh; overflow-y: auto; padding: 10px var(--pad) calc(20px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface); border-radius: 22px 22px 0 0; border-top: 1px solid var(--line);
+    transform: translateY(100%); transition: transform 0.4s cubic-bezier(.2,.8,.2,1);
+    box-shadow: 0 -12px 30px rgba(0,0,0,.35);
+}
+.sheet.open { transform: translateY(0); }
+.sheet-handle { width: 42px; height: 5px; border-radius: 3px; background: var(--off); margin: 0 auto 12px; }
+.sheet-title { font-family: "Unbounded", sans-serif; font-size: 18px; font-weight: 800; }
+.sheet-meta { color: var(--accent); font-size: 14px; font-weight: 700; margin: 4px 0 8px; }
+.sheet .section-label { margin-top: 14px; }
+.sheet .btn { margin-top: 16px; }
