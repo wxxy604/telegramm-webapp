@@ -161,7 +161,7 @@ WELCOME_TEXT = (
 def menu_markup():
     rows = [
         [{"text": "Купить", "callback_data": "buy", "style": "success"}],
-        [{"text": "Мои ключи", "callback_data": "keys"}, {"text": "Реф. система", "callback_data": "referral"}],
+        [{"text": "Серверы", "callback_data": "keys"}, {"text": "Реф. система", "callback_data": "referral"}],
         [{"text": "Поддержка", "callback_data": "support"}],
         [{"text": "Документы", "callback_data": "docs"}],
     ]
