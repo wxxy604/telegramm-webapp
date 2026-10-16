@@ -204,6 +204,21 @@ def trial_status(user):
     return f"активен, осталось {days} дн."
 
 
+def has_access(user):
+    now = int(time.time())
+    return user.get("paid_until", 0) > now or user.get("trial_until", 0) > now
+
+
+def send_key(chat_id, user_id):
+    """Отправляет пользователю его ключ или сообщение, что свободных ключей пока нет."""
+    uri = db.get_key(user_id)
+    if uri:
+        send(chat_id, f"Ваш ключ:\n<code>{html_escape(uri)}</code>\n\nСкопируйте ссылку и вставьте её в VPN-клиент.",
+             back_markup(), parse_mode="HTML")
+    else:
+        send(chat_id, "Свободных ключей сейчас нет. Ключ появится в разделе «Мои ключи» автоматически.", back_markup())
+
+
 def screen(name, user, arg=""):
     first = user.get("first_name", "")
     uid = user.get("id")
@@ -262,7 +277,13 @@ def screen(name, user, arg=""):
         ]}
         return f"Тариф «{title}» — {stars} ⭐\n\nОплата звёздами Telegram внутри бота.", markup
     if name == "keys":
-        return "Ключи\n\nКлючи выдаются после активации подписки или пробного периода. Сейчас ключей нет.", back_markup()
+        if not has_access(record):
+            db.release_key(uid)
+            return "Ключи\n\nДоступа сейчас нет. Оформите подписку или пробный период в разделе «Купить».", back_markup()
+        uri = db.get_key(uid)
+        if not uri:
+            return "Ключи\n\nСвободных ключей сейчас нет. Ключ появится здесь автоматически, как только он будет добавлен.", back_markup()
+        return f"Ваш ключ:\n<code>{html_escape(uri)}</code>\n\nСкопируйте ссылку и вставьте её в VPN-клиент.", back_markup()
     if name == "devices":
         return "Устройства\n\nПодключено: 0 из 3.", back_markup()
     if name == "referral":
@@ -353,6 +374,7 @@ def handle_successful_payment(message):
     _, days, _ = PLANS[key]
     db.extend_paid(user_id, days)
     send(message["chat"]["id"], f"Оплата прошла. Подписка продлена на {days} дн. Проверьте статус в разделе «Подписка».", reply_keyboard())
+    send_key(message["chat"]["id"], user_id)
 
 
 def handle_web_app_data(message):
@@ -424,6 +446,7 @@ def crypto_check(chat_id, user_id, invoice_id, key):
     _, days, _ = PLANS[key]
     db.extend_paid(user_id, days)
     send(chat_id, f"Оплата USDT получена. Подписка продлена на {days} дн.", reply_keyboard())
+    send_key(chat_id, user_id)
 
 
 def handle_callback(cb):
@@ -458,7 +481,7 @@ def handle_callback(cb):
         return
     text, markup = screen(name, cb["from"], arg)
     # Главный экран использует HTML-цитаты, остальные экраны — обычный текст
-    parse_mode = "HTML" if name == "menu" else None
+    parse_mode = "HTML" if name in ("menu", "keys") else None
     edit_or_send(chat_id, msg.get("message_id"), text, markup, parse_mode=parse_mode)
 
 
@@ -479,6 +502,8 @@ def handle_start(message, user, payload):
     # Приветствие со статусом и преимуществами сразу, нижняя клавиатура снимается
     record = db.get_user(user["id"]) or {}
     send(chat_id, welcome_text(user, record), menu_markup(), parse_mode="HTML")
+    if note != "С возвращением!":
+        send_key(chat_id, user["id"])
     call("sendMessage", {"chat_id": chat_id, "text": "\u200b", "reply_markup": {"remove_keyboard": True}})
 
 
