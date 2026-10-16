@@ -373,6 +373,7 @@ async function loadState() {
 
 // Серверы: 10 лучших по пингу с сервера бота
 const SERVERS_API = "https://telegramm-webapp.vercel.app/api/webhook?servers=1";
+let serversAccess = false;
 const APPS_GUIDE = [
     { os: "iPhone / iPad", app: "Streisand или V2Box (App Store)", how: "Откройте приложение, нажмите «+» → «Вставить из буфера». Выберите сервер и включите подключение." },
     { os: "Android", app: "v2rayNG или Hiddify (Google Play)", how: "Откройте приложение, нажмите «+» → «Импорт из буфера обмена». Выберите сервер и включите подключение." },
@@ -385,6 +386,13 @@ let currentServer = null;
 function renderServers() {
     const list = $("servers-list");
     list.innerHTML = "";
+    if (!serversAccess) {
+        const el = document.createElement("div");
+        el.className = "empty";
+        el.textContent = "Серверы доступны с подпиской или пробным периодом";
+        list.appendChild(el);
+        return;
+    }
     if (servers.length === 0) {
         const el = document.createElement("div");
         el.className = "empty";
@@ -404,9 +412,17 @@ function renderServers() {
 }
 
 async function loadServers() {
+    if (!user) {
+        renderServers();
+        return;
+    }
     try {
-        const r = await fetch(SERVERS_API, { cache: "no-store" });
-        if (r.ok) servers = (await r.json()).servers || [];
+        const r = await fetch(`${SERVERS_API}&uid=${user.id}`, { cache: "no-store" });
+        if (r.ok) {
+            const data = await r.json();
+            servers = data.servers || [];
+            serversAccess = !!data.access;
+        }
     } catch (e) {
         // Нет связи: список остаётся пустым
     }
@@ -448,14 +464,29 @@ function closeSheet() {
 
 $("sheet-backdrop").addEventListener("click", closeSheet);
 
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch (e) {
+        // Запасной способ, если Clipboard API недоступен в WebView Telegram
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        return ok;
+    }
+}
+
 $("sheet-copy").addEventListener("click", async () => {
     if (!currentServer) return;
-    try {
-        await navigator.clipboard.writeText(currentServer.uri);
-        toast("Ключ скопирован");
-    } catch (e) {
-        toast("Не удалось скопировать");
-    }
+    const ok = await copyText(currentServer.uri);
+    toast(ok ? "Ключ скопирован" : "Не удалось скопировать");
     haptic();
 });
 
