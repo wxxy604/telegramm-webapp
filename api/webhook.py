@@ -30,6 +30,7 @@ _bot_username = None
 
 CRYPTO_TOKEN = os.getenv("CRYPTO_PAY_TOKEN", "")
 CRYPTO_PRICES = {"1m": 2, "3m": 5, "12m": 18}  # цены в USDT
+SBP_PRICES = {"1m": 100, "3m": 250, "12m": 900}  # цены в рублях по СБП
 
 
 def call(method, payload):
@@ -352,7 +353,11 @@ def screen(name, user, arg=""):
         rows.append([{"text": "Назад", "callback_data": "buy"}])
         return f"Оплата: {label}\n\nВыберите тариф:", {"inline_keyboard": rows}
     if name == "sbp":
-        return "СБП пока недоступен. Выберите CryptoBot или TG Stars.", {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "buy"}]]}
+        lines = ["Оплата: СБП\n", "Тарифы (цены в рублях):"]
+        for key, (title, _, _) in PLANS.items():
+            lines.append(f"• {title} — {SBP_PRICES[key]} ₽")
+        lines.append("\nОплата по СБП пока недоступна: подключение платёжного провайдера в работе.")
+        return "\n".join(lines), {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "buy"}]]}
     if name == "plan":
         if arg not in PLANS:
             return "Тариф не найден.", back_markup()
@@ -596,9 +601,9 @@ def handle_start(message, user, payload):
             call("sendMessage", {"chat_id": int(referrer), "text": "По вашей ссылке зарегистрировался новый пользователь. Вам начислено 3 дня пробного периода."})
             note = "Вы пришли по приглашению: вам начислено 3 дня пробного периода."
         else:
+            # Пробный период только по приглашению. Без реферальной ссылки — регистрация без триала.
             db.save_user(user["id"], {"id": user["id"], "trial_until": 0, "referrer": None, "invited": 0})
-            db.add_trial_days(user["id"], 3)
-            note = "Вам начислено 3 дня бесплатного пробного периода."
+            note = "Пробный период доступен по приглашению от друга (3 дня по реферальной ссылке)."
     else:
         note = "С возвращением!"
 
