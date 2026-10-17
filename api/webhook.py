@@ -345,7 +345,7 @@ def screen(name, user, arg=""):
                     for k, (title, _, stars) in PLANS.items()]
             label = "TG Stars"
         elif arg == "sbp":
-            rows = [[{"text": f"{title} · СБП", "callback_data": "sbp"}]
+            rows = [[{"text": f"{title} · {SBP_PRICES[k]} ₽", "callback_data": "sbp"}]
                     for k, (title, _, _) in PLANS.items()]
             label = "СБП"
         else:
