@@ -543,7 +543,15 @@ def crypto_check(chat_id, user_id, invoice_id, key):
 
 
 def handle_callback(cb):
-    call("answerCallbackQuery", {"callback_query_id": cb["id"]})
+    if cb.get("data") == "ticket":
+        # Всплывающее уведомление поверх чата: подсказка, что делать дальше
+        call("answerCallbackQuery", {
+            "callback_query_id": cb["id"],
+            "text": "Напишите обращение в строке ввода ниже",
+            "show_alert": True,
+        })
+    else:
+        call("answerCallbackQuery", {"callback_query_id": cb["id"]})
     msg = cb.get("message") or {}
     chat_id = msg.get("chat", {}).get("id")
     if not chat_id:
@@ -585,7 +593,12 @@ def handle_callback(cb):
         return
     if name == "ticket":
         db.set_support_wait(cb["from"]["id"])
-        send(chat_id, "Напишите ваш вопрос одним сообщением. Ждём его в течение 10 минут.", None)
+        # force_reply открывает строку ввода с подсказкой: пользователь сразу пишет обращение
+        call("sendMessage", {
+            "chat_id": chat_id,
+            "text": "✍️ Опишите ваш вопрос одним сообщением. Ответ придёт в этот чат.",
+            "reply_markup": {"force_reply": True, "input_field_placeholder": "Ваш вопрос..."},
+        })
         return
     if name == "doc" and arg in DOCS:
         show_doc_page(chat_id, msg.get("message_id"), arg, 1)
