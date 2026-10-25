@@ -592,6 +592,9 @@ def handle_callback(cb):
     if handle_admin_callback(cb, name, arg):
         return
     if name == "ticket":
+        if is_admin(cb["from"]):
+            send(chat_id, "Вы администратор: обращения создают пользователи. Отвечайте кнопкой «Ответить» под обращением.", None)
+            return
         db.set_support_wait(cb["from"]["id"])
         # force_reply открывает строку ввода с подсказкой: пользователь сразу пишет обращение
         call("sendMessage", {
@@ -668,6 +671,9 @@ def notify_admin_new_ticket(ticket):
 
 def handle_ticket_text(chat_id, user, text):
     """Пользователь прислал текст обращения: сохраняем, уведомляем админа."""
+    if is_admin(user):
+        send(chat_id, "Администратор не создаёт обращения в поддержку.", None)
+        return
     ticket_id = db.create_ticket(user["id"], user.get("first_name", ""), text)
     notify_admin_new_ticket(db.get_ticket(ticket_id))
     send(chat_id, f"Обращение #{ticket_id} принято. Ответ придёт в этот чат.", back_markup())
@@ -698,6 +704,14 @@ def notify_admin_ticket_message(ticket, text):
         "parse_mode": "HTML",
         "reply_markup": ticket_admin_markup(ticket["id"]),
     })
+
+
+def notify_admin_ticket_closed_by_user(ticket):
+    """Пользователь закрыл обращение в мини приложении: сообщаем админу."""
+    if not ADMIN_CHAT_ID:
+        return
+    call("sendMessage", {"chat_id": ADMIN_CHAT_ID,
+                         "text": f"✅ Пользователь закрыл обращение #{ticket['id']}. Новое сообщение от него откроет его снова."})
 
 
 def close_ticket(ticket):
@@ -850,46 +864,55 @@ class handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _support_get(self):
-        """История обращения пользователя из мини приложения."""
+        """История обращения пользователя и статус (для мини приложения)."""
         uid = request_user_id(self.path)
         if not uid:
             self._json(403, {"error": "forbidden"})
             return
-        ticket = db.latest_user_ticket(uid)
-        if not ticket:
-            self._json(200, {"ticket": None, "messages": []})
-            return
-        self._json(200, {"ticket": {"id": ticket["id"], "status": ticket.get("status", "open")},
-                         "messages": db.ticket_messages(ticket)})
+        self._support_get_response(uid)
 
     def _support_post(self, length):
-        """Новое сообщение пользователя из мини приложения. Создаёт обращение или дописывает в открытое."""
+        """Действия в чате поддержки: отправка сообщения или закрытие обращения пользователем."""
         data = json.loads(self.rfile.read(length) or b"{}")
         uid = verify_init_data(data.get("init", ""))
-        text = str(data.get("text", "")).strip()
         if not uid:
             self._json(403, {"error": "forbidden"})
             return
+        if is_admin({"id": uid}):
+            self._json(403, {"error": "Администратор не пишет в поддержку. Отвечайте на обращения в боте."})
+            return
+        if data.get("action") == "close":
+            ticket = db.latest_user_ticket(uid)
+            if not ticket or ticket.get("status") == "closed":
+                self._json(400, {"error": "Открытых обращений нет."})
+                return
+            db.close_user_ticket(ticket)
+            notify_admin_ticket_closed_by_user(ticket)
+            self._support_get_response(uid)
+            return
+        text = str(data.get("text", "")).strip()
         if not text or len(text) > 2000:
-            self._json(400, {"error": "Сообщение пустое или слишком длинное (до 2000 символов)."})
+            self._json(400, {"error": "Сообщение пустое или длиннее 2000 символов."})
             return
         if not db.support_allowed(uid):
             self._json(429, {"error": "Подождите пару секунд перед следующим сообщением."})
             return
-        user = {"id": uid, "first_name": data.get("name", "")}
         ticket = db.latest_user_ticket(uid)
         if ticket and ticket.get("status") != "closed":
             db.append_ticket_message(ticket, "user", text)
             notify_admin_ticket_message(ticket, text)
         else:
-            ticket_id = db.create_ticket(uid, user["first_name"], text)
+            ticket_id = db.create_ticket(uid, str(data.get("name", ""))[:64], text)
             notify_admin_new_ticket(db.get_ticket(ticket_id))
         self._support_get_response(uid)
 
     def _support_get_response(self, uid):
         ticket = db.latest_user_ticket(uid)
-        self._json(200, {"ticket": {"id": ticket["id"], "status": ticket.get("status", "open")} if ticket else None,
-                         "messages": db.ticket_messages(ticket) if ticket else []})
+        self._json(200, {
+            "ticket": {"id": ticket["id"], "status": ticket.get("status", "open")} if ticket else None,
+            "messages": db.ticket_messages(ticket) if ticket else [],
+            "admin": is_admin({"id": uid}),
+        })
 
     def _servers(self):
         """Персональный список серверов пользователя для мини приложения. Без доступа — пусто."""

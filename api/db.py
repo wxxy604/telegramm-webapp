@@ -244,6 +244,12 @@ def append_ticket_message(ticket, sender, text):
     save_ticket(ticket)
 
 
+def close_user_ticket(ticket):
+    """Пользователь закрыл своё обращение в мини приложении."""
+    ticket["status"] = "closed"
+    append_ticket_message(ticket, "system", "Обращение закрыто пользователем.")
+
+
 def support_allowed(user_id):
     """Не чаще одного сообщения в 3 секунды с одного пользователя (защита от спама)."""
     return _cmd("SET", f"support:rate:{user_id}", "1", "NX", "EX", "3") == "OK"
