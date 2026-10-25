@@ -214,7 +214,7 @@ def create_ticket(user_id, name, text):
               "created": now, "status": "open", "reply": None,
               "messages": [{"from": "user", "text": text, "ts": now}]}
     _cmd("SET", f"support:ticket:{ticket_id}", json.dumps(ticket, ensure_ascii=False))
-    _cmd("SET", f"support:last:{user_id}", str(ticket_id))
+    link_user_ticket(user_id, ticket_id)
     return ticket_id
 
 
@@ -222,6 +222,32 @@ def latest_user_ticket(user_id):
     """Последнее обращение пользователя (открытое или закрытое) или None."""
     tid = _cmd("GET", f"support:last:{user_id}")
     return get_ticket(int(tid)) if tid else None
+
+
+def user_ticket_ids(user_id):
+    """Все номера обращений пользователя, новые первыми."""
+    raw = _cmd("LRANGE", f"support:list:{user_id}", "0", "99")
+    return [int(x) for x in (raw or [])]
+
+
+def user_tickets(user_id):
+    """Список обращений пользователя с полями для переключения (без полной истории)."""
+    out = []
+    for tid in user_ticket_ids(user_id):
+        t = get_ticket(tid)
+        if t:
+            msgs = ticket_messages(t)
+            last = msgs[-1] if msgs else {}
+            out.append({"id": t["id"], "status": t.get("status", "open"), "created": t.get("created", 0),
+                        "preview": (last.get("text") or "")[:80], "last_ts": last.get("ts", t.get("created", 0))})
+    return out
+
+
+def link_user_ticket(user_id, ticket_id):
+    """Добавляет номер обращения в список пользователя и делает его последним."""
+    _cmd("LPUSH", f"support:list:{user_id}", str(ticket_id))
+    _cmd("LTRIM", f"support:list:{user_id}", "0", "99")
+    _cmd("SET", f"support:last:{user_id}", str(ticket_id))
 
 
 def ticket_messages(ticket):
@@ -250,6 +276,16 @@ def close_user_ticket(ticket):
     append_ticket_message(ticket, "system", "Обращение закрыто пользователем.")
 
 
+def set_new_chat(user_id):
+    """Пользователь нажал «Новый чат»: следующее сообщение без выбранного обращения создаст новое."""
+    _cmd("SET", f"support:newchat:{user_id}", "1", "EX", "1800")
+
+
+def pop_new_chat(user_id):
+    """Возвращает True, если пользователь выбрал «Новый чат», и сбрасывает пометку."""
+    return _cmd("DEL", f"support:newchat:{user_id}") == 1
+
+
 def support_allowed(user_id):
     """Не чаще одного сообщения в 3 секунды с одного пользователя (защита от спама)."""
     return _cmd("SET", f"support:rate:{user_id}", "1", "NX", "EX", "3") == "OK"
@@ -258,6 +294,16 @@ def support_allowed(user_id):
 def get_ticket(ticket_id):
     raw = _cmd("GET", f"support:ticket:{ticket_id}")
     return json.loads(raw) if raw else None
+
+
+def open_ticket_for_user(user_id, ticket_id):
+    """Переключает чат пользователя на обращение ticket_id. Возвращает обращение или None,
+    если оно не принадлежит этому пользователю (нельзя открыть чужое)."""
+    ticket = get_ticket(ticket_id)
+    if not ticket or str(ticket.get("user_id")) != str(user_id):
+        return None
+    link_user_ticket(user_id, ticket_id)
+    return ticket
 
 
 def save_ticket(ticket):

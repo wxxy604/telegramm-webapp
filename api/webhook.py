@@ -10,6 +10,8 @@ from urllib.parse import parse_qs, parse_qsl, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db  # noqa: E402
+import support  # noqa: E402
+import support_bot  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
@@ -542,6 +544,17 @@ def crypto_check(chat_id, user_id, invoice_id, key):
 
 
 
+SUPPORT_HOOKS_USER = {
+    "notify_new": lambda ticket: notify_admin_new_ticket(ticket),
+    "notify_message": lambda ticket, text: notify_admin_ticket_message(ticket, text),
+    "notify_closed": lambda ticket: notify_admin_ticket_closed_by_user(ticket),
+}
+SUPPORT_HOOKS_ADMIN = {
+    "close": lambda ticket: close_ticket(ticket),
+    "reply": lambda ticket, text: send_ticket_reply(ticket, text),
+}
+
+
 def handle_callback(cb):
     if cb.get("data") == "ticket":
         # Всплывающее уведомление поверх чата: подсказка, что делать дальше
@@ -743,19 +756,33 @@ def handle_tickets_list(chat_id, user):
     """Команда администратора /tickets: последние 10 обращений со статусами."""
     if not is_admin(user):
         return
-    tickets = db.list_tickets(10)
-    if not tickets:
-        send(chat_id, "Обращений пока нет.", None)
+    markup, title = support_bot.list_markup(10)
+    if markup is None:
+        send(chat_id, title, None)
         return
-    lines = ["Последние обращения:"]
-    for t in tickets:
-        lines.append(f"#{t['id']} · {STATUS_TITLE.get(t.get('status', 'open'), '—')} · "
-                     f"{t.get('name') or 'без имени'}: {t['text'][:60]}")
-    send(chat_id, "\n".join(lines), None)
+    send(chat_id, title, markup)
 
 
 def handle_admin_callback(cb, name, arg):
-    """Кнопки админа: «Ответить» (просит текст) и «Закрыть». Возвращает True, если обработано."""
+    """Кнопки админа: переключение обращений (tv/tl), «Ответить» (tr) и «Закрыть» (tc).
+    Возвращает True, если обработано."""
+    if name == "tl":
+        if not is_admin(cb["from"]):
+            return True
+        chat_id = cb["message"]["chat"]["id"]
+        markup, title = support_bot.list_markup(10)
+        call("sendMessage", {"chat_id": chat_id, "text": title, "reply_markup": markup or {"inline_keyboard": []}})
+        return True
+    if name == "tv":
+        if not is_admin(cb["from"]) or not arg.isdigit():
+            return True
+        chat_id = cb["message"]["chat"]["id"]
+        ticket = db.get_ticket(int(arg))
+        if not ticket:
+            send(chat_id, f"Обращение #{arg} не найдено.", None)
+            return True
+        send(chat_id, support_bot.card_text(ticket), support_bot.card_markup(ticket))
+        return True
     if name not in ("tr", "tc") or not arg.isdigit():
         return False
     if not is_admin(cb["from"]):
@@ -864,55 +891,46 @@ class handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _support_get(self):
-        """История обращения пользователя и статус (для мини приложения)."""
+        """Чат поддержки: список обращений пользователя и выбранный чат. Админ: ?support=all — все обращения."""
         uid = request_user_id(self.path)
         if not uid:
             self._json(403, {"error": "forbidden"})
             return
-        self._support_get_response(uid)
+        if is_admin({"id": uid}) and "support=all" in self.path:
+            self._support_admin_list()
+            return
+        self._support_state(uid, ticket_id=None)
 
     def _support_post(self, length):
-        """Действия в чате поддержки: отправка сообщения или закрытие обращения пользователем."""
+        """Действия в чате поддержки из мини приложения."""
         data = json.loads(self.rfile.read(length) or b"{}")
         uid = verify_init_data(data.get("init", ""))
         if not uid:
             self._json(403, {"error": "forbidden"})
             return
+        action = data.get("action", "send")
         if is_admin({"id": uid}):
-            self._json(403, {"error": "Администратор не пишет в поддержку. Отвечайте на обращения в боте."})
+            if action in ("admin_open", "admin_reply", "admin_close"):
+                self._support_admin_action(action, data)
+            else:
+                self._json(403, {"error": "Администратор не пишет в поддержку. Отвечайте на обращения ниже."})
             return
-        if data.get("action") == "close":
-            ticket = db.latest_user_ticket(uid)
-            if not ticket or ticket.get("status") == "closed":
-                self._json(400, {"error": "Открытых обращений нет."})
-                return
-            db.close_user_ticket(ticket)
-            notify_admin_ticket_closed_by_user(ticket)
-            self._support_get_response(uid)
-            return
-        text = str(data.get("text", "")).strip()
-        if not text or len(text) > 2000:
-            self._json(400, {"error": "Сообщение пустое или длиннее 2000 символов."})
-            return
-        if not db.support_allowed(uid):
-            self._json(429, {"error": "Подождите пару секунд перед следующим сообщением."})
-            return
-        ticket = db.latest_user_ticket(uid)
-        if ticket and ticket.get("status") != "closed":
-            db.append_ticket_message(ticket, "user", text)
-            notify_admin_ticket_message(ticket, text)
-        else:
-            ticket_id = db.create_ticket(uid, str(data.get("name", ""))[:64], text)
-            notify_admin_new_ticket(db.get_ticket(ticket_id))
-        self._support_get_response(uid)
+        code, body = support.user_action(uid, dict(data, name=data.get("name", "")), SUPPORT_HOOKS_USER)
+        self._json(code, body)
 
     def _support_get_response(self, uid):
-        ticket = db.latest_user_ticket(uid)
-        self._json(200, {
-            "ticket": {"id": ticket["id"], "status": ticket.get("status", "open")} if ticket else None,
-            "messages": db.ticket_messages(ticket) if ticket else [],
-            "admin": is_admin({"id": uid}),
-        })
+        self._json(200, support.state_for_user(uid))
+
+    def _support_admin_list(self):
+        self._json(200, support.admin_list())
+
+    def _support_admin_action(self, action, data):
+        code, body = support.admin_action(dict(data, action=action), SUPPORT_HOOKS_ADMIN)
+        self._json(code, body)
+
+    def _support_state(self, uid, ticket_id=None, new_chat=False):
+        ticket = db.get_ticket(ticket_id) if ticket_id else None
+        self._json(200, support.state_for_user(uid, ticket=ticket, new_chat=new_chat))
 
     def _servers(self):
         """Персональный список серверов пользователя для мини приложения. Без доступа — пусто."""
