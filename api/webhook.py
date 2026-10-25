@@ -896,7 +896,8 @@ class handler(BaseHTTPRequestHandler):
         if not uid:
             self._json(403, {"error": "forbidden"})
             return
-        if is_admin({"id": uid}) and "support=all" in self.path:
+        if is_admin({"id": uid}):
+            # Админ всегда получает панель обращений, даже при обычном опросе
             self._support_admin_list()
             return
         self._support_state(uid, ticket_id=None)

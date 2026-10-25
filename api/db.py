@@ -286,6 +286,11 @@ def pop_new_chat(user_id):
     return _cmd("DEL", f"support:newchat:{user_id}") == 1
 
 
+def has_new_chat(user_id):
+    """Проверяет пометку «Новый чат» без сброса: опрос состояния не должен её съедать."""
+    return _cmd("GET", f"support:newchat:{user_id}") == "1"
+
+
 def support_allowed(user_id):
     """Не чаще одного сообщения в 3 секунды с одного пользователя (защита от спама)."""
     return _cmd("SET", f"support:rate:{user_id}", "1", "NX", "EX", "3") == "OK"

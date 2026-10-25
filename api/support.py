@@ -19,6 +19,8 @@ def state_for_user(uid, ticket=None, new_chat=False):
         current = None
     elif ticket is not None:
         current = ticket
+    elif db.has_new_chat(uid):
+        current = None  # пользователь начал новый чат и ещё не отправил сообщение
     else:
         current = db.latest_user_ticket(uid)
     return {
@@ -63,6 +65,7 @@ def user_action(uid, data, hooks):
 
     if action == "open":
         ticket = db.open_ticket_for_user(uid, ticket_id)
+        db.pop_new_chat(uid)  # выбрали существующее обращение — выходим из режима «Новый чат»
         if not ticket:
             return 404, {"error": "Обращение не найдено."}
         return 200, state_for_user(uid, ticket=ticket)
