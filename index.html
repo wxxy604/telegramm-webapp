@@ -125,11 +125,29 @@
             <div class="row"><div class="row-body"><div class="row-title">ID</div></div><div class="row-end" id="p-id">—</div></div>
         </div>
 
+        <div class="section-label">Помощь</div>
+        <div class="group">
+            <div class="row" data-go="support"><div class="row-body"><div class="row-title">Поддержка</div><div class="row-sub">Напишите нам, ответим в этом приложении и в боте</div></div><div class="row-chev">›</div></div>
+        </div>
+
         <div class="section-label" data-i18n="settings_docs">Документы</div>
         <div class="group">
             <div class="row" data-doc="terms"><div class="row-body"><div class="row-title" data-i18n="doc_terms">Пользовательское соглашение</div></div><div class="row-chev">›</div></div>
             <div class="row" data-doc="privacy"><div class="row-body"><div class="row-title" data-i18n="doc_privacy">Политика конфиденциальности</div></div><div class="row-chev">›</div></div>
         </div>
+    </section>
+
+    <section class="screen" id="screen-support">
+        <div class="row back-row" data-go="settings"><div class="row-chev back-chev">›</div><div class="row-title">Назад</div></div>
+        <div class="title">Поддержка</div>
+        <div class="support-status" id="support-status">Загрузка…</div>
+        <div class="chat" id="chat-list"></div>
+        <form class="chat-input" id="chat-form" autocomplete="off">
+            <textarea id="chat-text" rows="1" maxlength="2000" placeholder="Напишите сообщение..."></textarea>
+            <button type="submit" class="chat-send" id="chat-send" aria-label="Отправить">
+                <svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8z"/></svg>
+            </button>
+        </form>
     </section>
 
     <section class="screen" id="screen-doc">

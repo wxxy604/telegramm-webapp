@@ -507,6 +507,127 @@ $("sheet-copy").addEventListener("click", async () => {
     haptic();
 });
 
+// ---- Поддержка: чат обращения внутри мини приложения ----
+const SUPPORT_API = "https://telegramm-webapp.vercel.app/api/webhook";
+const STATUS_TEXT = { open: "Открыто", answered: "Есть ответ", closed: "Закрыто" };
+let supportTimer = null;
+let supportSending = false;
+
+function fmtTime(ts) {
+    if (!ts) return "";
+    const d = new Date(ts * 1000);
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderChat(messages) {
+    const list = $("chat-list");
+    list.innerHTML = "";
+    if (!messages || messages.length === 0) {
+        const el = document.createElement("div");
+        el.className = "chat-empty";
+        el.textContent = "Напишите ваш вопрос ниже. Ответ придёт сюда и в бота.";
+        list.appendChild(el);
+        return;
+    }
+    messages.forEach(m => {
+        const b = document.createElement("div");
+        b.className = "bubble " + (m.from === "user" ? "user" : m.from === "admin" ? "admin" : "system");
+        b.textContent = m.text;
+        const t = document.createElement("span");
+        t.className = "bubble-time";
+        t.textContent = fmtTime(m.ts);
+        b.appendChild(t);
+        list.appendChild(b);
+    });
+    list.scrollTop = list.scrollHeight;
+}
+
+function renderSupportStatus(ticket) {
+    const el = $("support-status");
+    if (!ticket) {
+        el.textContent = "Новое обращение";
+        el.className = "support-status";
+        return;
+    }
+    el.textContent = `Обращение #${ticket.id} · ${STATUS_TEXT[ticket.status] || "Открыто"}`;
+    el.className = "support-status " + (ticket.status || "open");
+}
+
+async function loadSupport() {
+    if (!user || !tg || !tg.initData) {
+        $("support-status").textContent = "Откройте приложение в Telegram";
+        return;
+    }
+    try {
+        const r = await fetch(`${SUPPORT_API}?support=1&init=${encodeURIComponent(tg.initData)}`, { cache: "no-store" });
+        if (!r.ok) throw new Error("bad status " + r.status);
+        const data = await r.json();
+        renderSupportStatus(data.ticket);
+        renderChat(data.messages);
+    } catch (e) {
+        $("support-status").textContent = "Нет связи с сервером";
+    }
+}
+
+async function sendSupport(text) {
+    const r = await fetch(`${SUPPORT_API}?support=1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ init: tg.initData, text, name: user ? user.first_name : "" }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Не удалось отправить");
+    renderSupportStatus(data.ticket);
+    renderChat(data.messages);
+}
+
+$("chat-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const input = $("chat-text");
+    const text = input.value.trim();
+    if (!text || supportSending) return;
+    if (!user || !tg || !tg.initData) {
+        toast("Откройте приложение в Telegram");
+        return;
+    }
+    supportSending = true;
+    $("chat-send").disabled = true;
+    try {
+        await sendSupport(text);
+        input.value = "";
+        input.style.height = "";
+        haptic();
+    } catch (err) {
+        toast(err.message);
+    } finally {
+        supportSending = false;
+        $("chat-send").disabled = false;
+    }
+});
+
+// Enter отправляет, Shift+Enter — перенос строки
+$("chat-text").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        $("chat-form").requestSubmit();
+    }
+});
+$("chat-text").addEventListener("input", e => {
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+});
+
+// Новые ответы подгружаем, пока открыт экран поддержки
+const originalShowTab = showTab;
+showTab = function (tab) {
+    originalShowTab(tab);
+    clearInterval(supportTimer);
+    if (tab === "support") {
+        loadSupport();
+        supportTimer = setInterval(loadSupport, 15000);
+    }
+};
+
 // Серверы грузим первыми и отдельно: ошибка в другом блоке не должна их блокировать
 loadServers();
 
