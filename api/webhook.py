@@ -674,12 +674,15 @@ def handle_ticket_text(chat_id, user, text):
 
 
 def send_ticket_reply(ticket, answer):
-    """Отправляет ответ пользователю, обновляет статус обращения."""
+    """Отправляет ответ пользователю, обновляет статус обращения. Закрытое обращение не отвечается."""
+    if ticket.get("status") == "closed":
+        return False
     ticket["status"] = "answered"
     ticket["reply"] = answer
     db.save_ticket(ticket)
     call("sendMessage", {"chat_id": int(ticket["user_id"]),
                          "text": f"Ответ поддержки на обращение #{ticket['id']}:\n\n{answer}"})
+    return True
 
 
 def close_ticket(ticket):
@@ -701,7 +704,9 @@ def handle_reply(chat_id, user, text):
     if not ticket:
         send(chat_id, f"Обращение #{parts[1]} не найдено.", None)
         return
-    send_ticket_reply(ticket, parts[2])
+    if not send_ticket_reply(ticket, parts[2]):
+        send(chat_id, f"Обращение #{ticket['id']} закрыто, ответить нельзя.", None)
+        return
     send(chat_id, f"Ответ отправлен по обращению #{ticket['id']}.", None)
 
 
@@ -732,11 +737,26 @@ def handle_admin_callback(cb, name, arg):
         send(chat_id, f"Обращение #{arg} не найдено.", None)
         return True
     if name == "tc":
+        if ticket.get("status") == "closed":
+            send(chat_id, f"Обращение #{arg} уже закрыто.", None)
+            return True
         close_ticket(ticket)
+        db.clear_admin_reply_wait(cb["from"]["id"])
         send(chat_id, f"Обращение #{arg} закрыто, пользователь уведомлён.", None)
         return True
-    send(chat_id, f"Напишите ответ на обращение #{arg} одним сообщением или командой /reply {arg} текст.", None)
+    # Ответить: закрытое обращение нельзя, иначе показываем текст обращения и подсказку
+    if ticket.get("status") == "closed":
+        send(chat_id, f"Обращение #{arg} закрыто, ответить нельзя.", None)
+        return True
     db.set_admin_reply_wait(cb["from"]["id"], arg)
+    call("sendMessage", {
+        "chat_id": chat_id,
+        "text": (f"✉️ Ответ на обращение #{arg}\n"
+                 f"От: {ticket.get('name') or 'без имени'} (ID {ticket['user_id']})\n\n"
+                 f"Вопрос:\n{ticket['text']}\n\n"
+                 f"Напишите ответ одним сообщением. Он сразу уйдёт пользователю."),
+        "reply_markup": {"force_reply": True, "input_field_placeholder": f"Ответ на #{arg}..."},
+    })
     return True
 
 
@@ -755,9 +775,10 @@ def handle_message(message):
         pending = db.pop_admin_reply_wait(user["id"])
         if pending:
             ticket = db.get_ticket(int(pending))
-            if ticket:
-                send_ticket_reply(ticket, text)
+            if ticket and send_ticket_reply(ticket, text):
                 send(chat_id, f"Ответ отправлен по обращению #{pending}.", None)
+            elif ticket:
+                send(chat_id, f"Обращение #{pending} закрыто, ответить нельзя.", None)
             return
     if text and not text.startswith("/") and db.pop_support_wait(user["id"]):
         handle_ticket_text(chat_id, user, text)

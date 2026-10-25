@@ -194,6 +194,10 @@ def set_admin_reply_wait(admin_id, ticket_id):
     _cmd("SET", f"support:adminwait:{admin_id}", str(ticket_id), "EX", str(SUPPORT_WAIT_SECONDS))
 
 
+def clear_admin_reply_wait(admin_id):
+    _cmd("DEL", f"support:adminwait:{admin_id}")
+
+
 def pop_admin_reply_wait(admin_id):
     """Возвращает номер обращения, на которое админ сейчас отвечает (или None), и сбрасывает ожидание."""
     raw = _cmd("GET", f"support:adminwait:{admin_id}")
