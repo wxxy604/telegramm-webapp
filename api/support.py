@@ -14,13 +14,13 @@ def _user_view(ticket):
 
 
 def state_for_user(uid, ticket=None, new_chat=False):
-    """Состояние чата пользователя: список обращений и выбранный чат."""
+    """Состояние чата пользователя: список обращений и выбранный чат.
+    Выбранный чат — это ticket (его передаёт клиент). Без него показываем последнее обращение.
+    new_chat — пустой чат: сервер ничего не выбирает, пока не придёт первое сообщение."""
     if new_chat:
         current = None
     elif ticket is not None:
         current = ticket
-    elif db.has_new_chat(uid):
-        current = None  # пользователь начал новый чат и ещё не отправил сообщение
     else:
         current = db.latest_user_ticket(uid)
     return {

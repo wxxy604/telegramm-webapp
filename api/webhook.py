@@ -900,7 +900,10 @@ class handler(BaseHTTPRequestHandler):
             # Админ всегда получает панель обращений, даже при обычном опросе
             self._support_admin_list()
             return
-        self._support_state(uid, ticket_id=None)
+        query = parse_qs(urlparse(self.path).query)
+        ticket_id = int(query.get("ticket_id", ["0"])[0] or 0)
+        # ticket_id — чат, который открыт в интерфейсе: опрос обновляет именно его
+        self._support_state(uid, ticket_id=ticket_id or None)
 
     def _support_post(self, length):
         """Действия в чате поддержки из мини приложения."""
@@ -931,6 +934,9 @@ class handler(BaseHTTPRequestHandler):
 
     def _support_state(self, uid, ticket_id=None, new_chat=False):
         ticket = db.get_ticket(ticket_id) if ticket_id else None
+        # Чужое обращение не показываем: берём только обращения этого пользователя
+        if ticket and str(ticket.get("user_id")) != str(uid):
+            ticket = None
         self._json(200, support.state_for_user(uid, ticket=ticket, new_chat=new_chat))
 
     def _servers(self):
