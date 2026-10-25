@@ -8,9 +8,9 @@ REDIS_URL = os.getenv("UPSTASH_REDIS_REST_URL", "")
 REDIS_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 
 
-def _cmd(*args, retries=3):
+def _cmd(*args, retries=6):
     """Выполняет команду Redis через Upstash REST API и возвращает результат.
-    При сетевом таймауте повторяет запрос до retries раз."""
+    При сетевом таймауте повторяет запрос до retries раз с нарастающей паузой (до ~30 с)."""
     last_exc = None
     for attempt in range(retries):
         req = request.Request(
@@ -20,11 +20,11 @@ def _cmd(*args, retries=3):
             method="POST",
         )
         try:
-            with request.urlopen(req, timeout=20) as resp:
+            with request.urlopen(req, timeout=45) as resp:
                 return json.load(resp).get("result")
         except (TimeoutError, OSError) as exc:
             last_exc = exc
-            time.sleep(1 + attempt)
+            time.sleep(min(2 ** attempt, 30))
     raise last_exc
 
 
@@ -159,10 +159,77 @@ def save_best_servers(servers):
 
 
 def save_servers_pool(servers):
-    """Сохраняет полный пул рабочих серверов (после проверки). Старый пул заменяется целиком."""
+    """Сохраняет полный пул серверов (активные и ожидающие удаления, dropped_at).
+    servers:best — только активные лучшие 10 по пингу, их видят новые пользователи."""
     _cmd("SET", "servers:pool", json.dumps(servers, ensure_ascii=False))
-    # Для совместимости: лучшие 10 по пингу тоже обновляются
-    _cmd("SET", "servers:best", json.dumps(servers[:10], ensure_ascii=False))
+    active = [s for s in servers if not s.get("dropped_at")]
+    _cmd("SET", "servers:best", json.dumps(active[:100], ensure_ascii=False))
+
+
+def get_sources_auto():
+    """Источники, найденные парсером автоматически (хранятся в Redis)."""
+    raw = _cmd("GET", "sources:auto")
+    return json.loads(raw) if raw else []
+
+
+def save_sources_auto(urls):
+    _cmd("SET", "sources:auto", json.dumps(urls, ensure_ascii=False))
+
+
+SUPPORT_WAIT_SECONDS = 600  # сколько ждём сообщение пользователя после нажатия «Написать в поддержку»
+
+
+def set_support_wait(user_id):
+    """Помечает, что следующее сообщение пользователя — обращение в поддержку."""
+    _cmd("SET", f"support:wait:{user_id}", "1", "EX", str(SUPPORT_WAIT_SECONDS))
+
+
+def pop_support_wait(user_id):
+    """Возвращает True, если пользователь ждал ввода обращения, и сбрасывает ожидание."""
+    return _cmd("DEL", f"support:wait:{user_id}") == 1
+
+
+def set_admin_reply_wait(admin_id, ticket_id):
+    """Админ нажал «Ответить»: следующее его сообщение — ответ на обращение ticket_id."""
+    _cmd("SET", f"support:adminwait:{admin_id}", str(ticket_id), "EX", str(SUPPORT_WAIT_SECONDS))
+
+
+def pop_admin_reply_wait(admin_id):
+    """Возвращает номер обращения, на которое админ сейчас отвечает (или None), и сбрасывает ожидание."""
+    raw = _cmd("GET", f"support:adminwait:{admin_id}")
+    if raw:
+        _cmd("DEL", f"support:adminwait:{admin_id}")
+    return raw
+
+
+def create_ticket(user_id, name, text):
+    """Создаёт обращение в поддержку и возвращает его номер."""
+    ticket_id = _cmd("INCR", "support:seq")
+    ticket = {"id": ticket_id, "user_id": str(user_id), "name": name, "text": text,
+              "created": int(time.time()), "status": "open", "reply": None}
+    _cmd("SET", f"support:ticket:{ticket_id}", json.dumps(ticket, ensure_ascii=False))
+    return ticket_id
+
+
+def get_ticket(ticket_id):
+    raw = _cmd("GET", f"support:ticket:{ticket_id}")
+    return json.loads(raw) if raw else None
+
+
+def save_ticket(ticket):
+    _cmd("SET", f"support:ticket:{ticket['id']}", json.dumps(ticket, ensure_ascii=False))
+
+
+def list_tickets(limit=10):
+    """Последние обращения, новые первыми."""
+    last = _cmd("GET", "support:seq")
+    last = int(last) if last else 0
+    tickets = []
+    for tid in range(last, max(0, last - limit), -1):
+        t = get_ticket(tid)
+        if t:
+            tickets.append(t)
+    return tickets
 
 
 def get_servers_pool():
@@ -189,6 +256,8 @@ def assign_servers(user_id, count_min=3, count_max=5):
         for s in pool:  # пул уже отсортирован по пингу
             if need <= 0:
                 break
+            if s.get("dropped_at"):  # новым пользователям — только актуальные сервера
+                continue
             sid = _sid(s)
             if sid in current:
                 continue

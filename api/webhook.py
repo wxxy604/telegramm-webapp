@@ -173,10 +173,14 @@ def menu_markup():
 
 def support_markup():
     return {"inline_keyboard": [
+        [{"text": "✍️ Написать в поддержку", "callback_data": "ticket"}],
         [{"text": "FAQ", "callback_data": "help"}, {"text": "О сервисе", "callback_data": "about"}],
         [{"text": "Функции", "callback_data": "features"}, {"text": "Документы", "callback_data": "docs"}],
         [{"text": "Назад в меню", "callback_data": "menu"}],
     ]}
+
+
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")  # куда приходят обращения в поддержку (в .env)
 
 
 def welcome_text(user, record):
@@ -577,6 +581,12 @@ def handle_callback(cb):
         return
     if name == "noop":
         return
+    if handle_admin_callback(cb, name, arg):
+        return
+    if name == "ticket":
+        db.set_support_wait(cb["from"]["id"])
+        send(chat_id, "Напишите ваш вопрос одним сообщением. Ждём его в течение 10 минут.", None)
+        return
     if name == "doc" and arg in DOCS:
         show_doc_page(chat_id, msg.get("message_id"), arg, 1)
         return
@@ -613,10 +623,132 @@ def handle_start(message, user, payload):
     call("sendMessage", {"chat_id": chat_id, "text": "\u200b", "reply_markup": {"remove_keyboard": True}})
 
 
+def is_admin(user):
+    return bool(ADMIN_CHAT_ID) and str(user.get("id")) == str(ADMIN_CHAT_ID)
+
+
+STATUS_TITLE = {"open": "🟡 открыто", "answered": "🟢 отвечено", "closed": "⚪ закрыто"}
+
+
+def ticket_admin_markup(ticket_id):
+    return {"inline_keyboard": [
+        [{"text": "✉️ Ответить", "callback_data": f"tr:{ticket_id}"},
+         {"text": "✅ Закрыть", "callback_data": f"tc:{ticket_id}"}],
+    ]}
+
+
+def notify_admin_new_ticket(ticket):
+    """Уведомление админу о новом обращении с кнопками."""
+    if not ADMIN_CHAT_ID:
+        return
+    who = html_escape(ticket.get("name") or "без имени")
+    call("sendMessage", {
+        "chat_id": ADMIN_CHAT_ID,
+        "text": (f"🆕 Новое обращение #{ticket['id']}\n"
+                 f"От: {who} (ID {ticket['user_id']})\n\n"
+                 f"{html_escape(ticket['text'])}\n\n"
+                 f"Ответить: /reply {ticket['id']} текст"),
+        "parse_mode": "HTML",
+        "reply_markup": ticket_admin_markup(ticket["id"]),
+    })
+
+
+def handle_ticket_text(chat_id, user, text):
+    """Пользователь прислал текст обращения: сохраняем, уведомляем админа."""
+    ticket_id = db.create_ticket(user["id"], user.get("first_name", ""), text)
+    notify_admin_new_ticket(db.get_ticket(ticket_id))
+    send(chat_id, f"Обращение #{ticket_id} принято. Ответ придёт в этот чат.", back_markup())
+
+
+def send_ticket_reply(ticket, answer):
+    """Отправляет ответ пользователю, обновляет статус обращения."""
+    ticket["status"] = "answered"
+    ticket["reply"] = answer
+    db.save_ticket(ticket)
+    call("sendMessage", {"chat_id": int(ticket["user_id"]),
+                         "text": f"Ответ поддержки на обращение #{ticket['id']}:\n\n{answer}"})
+
+
+def close_ticket(ticket):
+    ticket["status"] = "closed"
+    db.save_ticket(ticket)
+    call("sendMessage", {"chat_id": int(ticket["user_id"]),
+                         "text": f"Обращение #{ticket['id']} закрыто. Если вопрос остался, напишите новое обращение."})
+
+
+def handle_reply(chat_id, user, text):
+    """Команда администратора: /reply <номер> <текст>."""
+    if not is_admin(user):
+        return
+    parts = text.split(maxsplit=2)
+    if len(parts) < 3 or not parts[1].isdigit():
+        send(chat_id, "Формат: /reply <номер> <текст ответа>", None)
+        return
+    ticket = db.get_ticket(int(parts[1]))
+    if not ticket:
+        send(chat_id, f"Обращение #{parts[1]} не найдено.", None)
+        return
+    send_ticket_reply(ticket, parts[2])
+    send(chat_id, f"Ответ отправлен по обращению #{ticket['id']}.", None)
+
+
+def handle_tickets_list(chat_id, user):
+    """Команда администратора /tickets: последние 10 обращений со статусами."""
+    if not is_admin(user):
+        return
+    tickets = db.list_tickets(10)
+    if not tickets:
+        send(chat_id, "Обращений пока нет.", None)
+        return
+    lines = ["Последние обращения:"]
+    for t in tickets:
+        lines.append(f"#{t['id']} · {STATUS_TITLE.get(t.get('status', 'open'), '—')} · "
+                     f"{t.get('name') or 'без имени'}: {t['text'][:60]}")
+    send(chat_id, "\n".join(lines), None)
+
+
+def handle_admin_callback(cb, name, arg):
+    """Кнопки админа: «Ответить» (просит текст) и «Закрыть». Возвращает True, если обработано."""
+    if name not in ("tr", "tc") or not arg.isdigit():
+        return False
+    if not is_admin(cb["from"]):
+        return True
+    chat_id = cb["message"]["chat"]["id"]
+    ticket = db.get_ticket(int(arg))
+    if not ticket:
+        send(chat_id, f"Обращение #{arg} не найдено.", None)
+        return True
+    if name == "tc":
+        close_ticket(ticket)
+        send(chat_id, f"Обращение #{arg} закрыто, пользователь уведомлён.", None)
+        return True
+    send(chat_id, f"Напишите ответ на обращение #{arg} одним сообщением или командой /reply {arg} текст.", None)
+    db.set_admin_reply_wait(cb["from"]["id"], arg)
+    return True
+
+
 def handle_message(message):
     chat_id = message["chat"]["id"]
     user = message.get("from", {})
     text = message.get("text", "").strip()
+
+    if text.startswith("/reply"):
+        handle_reply(chat_id, user, text)
+        return
+    if text == "/tickets":
+        handle_tickets_list(chat_id, user)
+        return
+    if is_admin(user) and text and not text.startswith("/"):
+        pending = db.pop_admin_reply_wait(user["id"])
+        if pending:
+            ticket = db.get_ticket(int(pending))
+            if ticket:
+                send_ticket_reply(ticket, text)
+                send(chat_id, f"Ответ отправлен по обращению #{pending}.", None)
+            return
+    if text and not text.startswith("/") and db.pop_support_wait(user["id"]):
+        handle_ticket_text(chat_id, user, text)
+        return
 
     if text.startswith("/start"):
         payload = text[6:].strip()
