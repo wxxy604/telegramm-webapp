@@ -150,6 +150,12 @@
     // Перехватываем отрисовку из app.js: сначала переключаем режим, затем рисуем чат
     const baseApplySupport = applySupport;
     applySupport = function (data) {
+        if (data.admin) {
+            // Админ: обновляем только панель обращений, открытый чат не трогаем
+            applyModeFromState(data);
+            loadAdminList();
+            return;
+        }
         applyModeFromState(data);
         baseApplySupport(data);
         if (!adminMode) {
