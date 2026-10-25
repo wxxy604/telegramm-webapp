@@ -507,50 +507,109 @@ $("sheet-copy").addEventListener("click", async () => {
     haptic();
 });
 
-// ---- Поддержка: чат обращения внутри мини приложения ----
+// ---- Поддержка: чат обращения в мини приложении ----
 const SUPPORT_API = "https://telegramm-webapp.vercel.app/api/webhook";
 const STATUS_TEXT = { open: "Открыто", answered: "Есть ответ", closed: "Закрыто" };
+const MONTHS_RU = ["января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 let supportTimer = null;
 let supportSending = false;
+let supportState = { ticket: null, messages: [], admin: false };
 
 function fmtTime(ts) {
     if (!ts) return "";
-    const d = new Date(ts * 1000);
-    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    return new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 }
 
-function renderChat(messages) {
+function dayLabel(ts) {
+    const d = new Date(ts * 1000);
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === now.toDateString()) return "Сегодня";
+    if (d.toDateString() === yesterday.toDateString()) return "Вчера";
+    return d.getDate() + " " + MONTHS_RU[d.getMonth()];
+}
+
+function renderChat(messages, keepScroll) {
     const list = $("chat-list");
+    const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
     list.innerHTML = "";
     if (!messages || messages.length === 0) {
         const el = document.createElement("div");
         el.className = "chat-empty";
-        el.textContent = "Напишите ваш вопрос ниже. Ответ придёт сюда и в бота.";
+        el.innerHTML = '<div class="chat-empty-icon">💬</div>Опишите вопрос ниже.<br>Ответ придёт сюда и в бота.';
         list.appendChild(el);
         return;
     }
+    let lastDay = "";
     messages.forEach(m => {
+        const day = m.ts ? dayLabel(m.ts) : "";
+        if (day && day !== lastDay) {
+            const sep = document.createElement("div");
+            sep.className = "chat-date";
+            sep.textContent = day;
+            list.appendChild(sep);
+            lastDay = day;
+        }
+        if (m.from === "system") {
+            const s = document.createElement("div");
+            s.className = "bubble system";
+            s.textContent = m.text;
+            list.appendChild(s);
+            return;
+        }
+        const row = document.createElement("div");
+        row.className = "msg-row " + (m.from === "user" ? "mine" : "theirs");
         const b = document.createElement("div");
-        b.className = "bubble " + (m.from === "user" ? "user" : m.from === "admin" ? "admin" : "system");
+        b.className = "bubble " + (m.from === "user" ? "user" : "admin");
         b.textContent = m.text;
         const t = document.createElement("span");
         t.className = "bubble-time";
         t.textContent = fmtTime(m.ts);
         b.appendChild(t);
-        list.appendChild(b);
+        row.appendChild(b);
+        list.appendChild(row);
     });
-    list.scrollTop = list.scrollHeight;
+    if (!keepScroll || nearBottom) list.scrollTop = list.scrollHeight;
 }
 
-function renderSupportStatus(ticket) {
-    const el = $("support-status");
-    if (!ticket) {
-        el.textContent = "Новое обращение";
-        el.className = "support-status";
+function renderSupportState() {
+    const status = $("support-status");
+    const closeBtn = $("support-close");
+    const notice = $("support-notice");
+    const form = $("chat-form");
+    const t = supportState.ticket;
+    if (supportState.admin) {
+        status.textContent = "Режим администратора";
+        status.className = "sp-status";
+        notice.hidden = false;
+        notice.textContent = "Обращения создают пользователи. Отвечайте на них кнопкой «Ответить» в боте.";
+        form.hidden = true;
+        closeBtn.hidden = true;
         return;
     }
-    el.textContent = `Обращение #${ticket.id} · ${STATUS_TEXT[ticket.status] || "Открыто"}`;
-    el.className = "support-status " + (ticket.status || "open");
+    form.hidden = false;
+    notice.hidden = true;
+    if (!t) {
+        status.textContent = "Напишите, с чем нужна помощь";
+        status.className = "sp-status";
+        closeBtn.hidden = true;
+        return;
+    }
+    status.textContent = `Обращение #${t.id} · ${STATUS_TEXT[t.status] || "Открыто"}`;
+    status.className = "sp-status " + (t.status || "open");
+    closeBtn.hidden = t.status === "closed";
+    if (t.status === "closed") {
+        notice.hidden = false;
+        notice.textContent = "Обращение закрыто. Напишите сообщение, и откроется новое.";
+    }
+}
+
+function applySupport(data) {
+    supportState = { ticket: data.ticket || null, messages: data.messages || [], admin: !!data.admin };
+    renderSupportState();
+    renderChat(supportState.messages, true);
 }
 
 async function loadSupport() {
@@ -558,31 +617,28 @@ async function loadSupport() {
         $("support-status").textContent = "Откройте приложение в Telegram";
         return;
     }
+    if (supportSending) return;
     try {
         const r = await fetch(`${SUPPORT_API}?support=1&init=${encodeURIComponent(tg.initData)}`, { cache: "no-store" });
         if (!r.ok) throw new Error("bad status " + r.status);
-        const data = await r.json();
-        renderSupportStatus(data.ticket);
-        renderChat(data.messages);
+        applySupport(await r.json());
     } catch (e) {
         $("support-status").textContent = "Нет связи с сервером";
     }
 }
 
-async function sendSupport(text) {
+async function supportRequest(payload) {
     const r = await fetch(`${SUPPORT_API}?support=1`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ init: tg.initData, text, name: user ? user.first_name : "" }),
+        body: JSON.stringify(Object.assign({ init: tg.initData, name: user ? user.first_name : "" }, payload)),
     });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data.error || "Не удалось отправить");
-    renderSupportStatus(data.ticket);
-    renderChat(data.messages);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || "Не удалось выполнить действие");
+    applySupport(data);
 }
 
-$("chat-form").addEventListener("submit", async e => {
-    e.preventDefault();
+async function sendSupportMessage() {
     const input = $("chat-text");
     const text = input.value.trim();
     if (!text || supportSending) return;
@@ -593,7 +649,7 @@ $("chat-form").addEventListener("submit", async e => {
     supportSending = true;
     $("chat-send").disabled = true;
     try {
-        await sendSupport(text);
+        await supportRequest({ text });
         input.value = "";
         input.style.height = "";
         haptic();
@@ -603,28 +659,53 @@ $("chat-form").addEventListener("submit", async e => {
         supportSending = false;
         $("chat-send").disabled = false;
     }
-});
+}
 
-// Enter отправляет, Shift+Enter — перенос строки
-$("chat-text").addEventListener("keydown", e => {
+function confirmBox(text, onYes) {
+    if (tg && typeof tg.showConfirm === "function") {
+        tg.showConfirm(text, ok => { if (ok) onYes(); });
+    } else if (window.confirm(text)) {
+        onYes();
+    }
+}
+
+async function closeSupportTicket() {
+    confirmBox("Закрыть обращение? Новое сообщение откроет его снова.", async () => {
+        try {
+            await supportRequest({ action: "close" });
+            toast("Обращение закрыто");
+            haptic();
+        } catch (err) {
+            toast(err.message);
+        }
+    });
+}
+
+const chatForm = $("chat-form");
+const chatText = $("chat-text");
+chatForm.addEventListener("submit", e => {
+    e.preventDefault();
+    sendSupportMessage();
+});
+chatText.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        $("chat-form").requestSubmit();
+        chatForm.requestSubmit();
     }
 });
-$("chat-text").addEventListener("input", e => {
-    e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+chatText.addEventListener("input", () => {
+    chatText.style.height = "auto";
+    chatText.style.height = Math.min(chatText.scrollHeight, 120) + "px";
 });
+$("support-close").addEventListener("click", closeSupportTicket);
 
-// Новые ответы подгружаем, пока открыт экран поддержки
-const originalShowTab = showTab;
+const baseShowTab = showTab;
 showTab = function (tab) {
-    originalShowTab(tab);
+    baseShowTab(tab);
     clearInterval(supportTimer);
     if (tab === "support") {
         loadSupport();
-        supportTimer = setInterval(loadSupport, 15000);
+        supportTimer = setInterval(loadSupport, 10000);
     }
 };
 

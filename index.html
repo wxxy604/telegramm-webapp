@@ -140,7 +140,15 @@
     <section class="screen" id="screen-support">
         <div class="row back-row" data-go="settings"><div class="row-chev back-chev">›</div><div class="row-title">Назад</div></div>
         <div class="title">Поддержка</div>
-        <div class="support-status" id="support-status">Загрузка…</div>
+        <div class="sp-head">
+            <div class="sp-avatar">S</div>
+            <div class="sp-meta">
+                <div class="sp-name">Поддержка SupplineVPN</div>
+                <div class="sp-status" id="support-status">Загрузка…</div>
+            </div>
+            <button type="button" class="sp-close" id="support-close" hidden>Закрыть</button>
+        </div>
+        <div class="sp-notice" id="support-notice" hidden></div>
         <div class="chat" id="chat-list"></div>
         <form class="chat-input" id="chat-form" autocomplete="off">
             <textarea id="chat-text" rows="1" maxlength="2000" placeholder="Напишите сообщение..."></textarea>
