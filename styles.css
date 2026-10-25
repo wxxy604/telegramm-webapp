@@ -336,6 +336,56 @@ body[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.55); }
 .chat-send:active { transform: scale(0.92); }
 .chat-send:disabled { opacity: .4; }
 
+/* ===== Переключение обращений и админ-панель ===== */
+.sp-tabs { margin-bottom: 10px; }
+.sp-tabs-list {
+    display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 8px; scrollbar-width: none;
+}
+.sp-tabs-list::-webkit-scrollbar { display: none; }
+.sp-tab {
+    flex: 0 0 auto; min-width: 118px; text-align: left; cursor: pointer;
+    padding: 9px 12px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--text); font-family: "Manrope", sans-serif;
+    transition: transform .15s ease, background .2s ease, border-color .2s ease;
+}
+.sp-tab:active { transform: scale(.96); }
+.sp-tab.active { border-color: rgba(34,197,94,.55); background: var(--accent-soft); }
+.sp-tab-top { display: block; font-size: 13px; font-weight: 800; }
+.sp-tab-sub { display: block; font-size: 11px; color: var(--hint); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.sp-new {
+    width: 100%; height: 40px; border-radius: 14px; cursor: pointer; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--accent); font-family: "Manrope", sans-serif; font-size: 13px; font-weight: 700;
+    transition: transform .15s ease;
+}
+.sp-new:active { transform: scale(.97); }
+.sp-new[hidden] { display: none; }
+.sp-admin { margin-bottom: 10px; }
+.sp-admin[hidden] { display: none; }
+.sp-admin-head {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    font-size: 13px; font-weight: 700; color: var(--hint);
+}
+.sp-admin-head .sp-new { width: auto; padding: 0 12px; height: 30px; font-size: 12px; }
+.sp-admin-list {
+    display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px;
+}
+.sp-admin-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; cursor: pointer;
+    border: 1px solid transparent; border-radius: 14px; background: transparent; color: var(--text);
+    font-family: "Manrope", sans-serif; text-align: left; transition: background .2s ease, transform .15s ease;
+}
+.sp-admin-item:active { transform: scale(.98); }
+.sp-admin-item.active { background: var(--accent-soft); border-color: rgba(34,197,94,.4); }
+.sp-admin-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: #f5b942; }
+.sp-admin-dot.answered { background: var(--accent); }
+.sp-admin-dot.closed { background: var(--hint); }
+.sp-admin-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sp-admin-title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-admin-prev { font-size: 12px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.sp-admin-when { font-size: 11px; color: var(--hint); flex-shrink: 0; }
+.sp-admin-list .chat-empty { margin: 16px auto; }
+
 /* ===== Чат поддержки (v2) ===== */
 [hidden] { display: none !important; }
 .sp-head {

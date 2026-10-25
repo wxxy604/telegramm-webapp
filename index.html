@@ -148,6 +148,17 @@
             </div>
             <button type="button" class="sp-close" id="support-close" hidden>Закрыть</button>
         </div>
+        <div class="sp-tabs" id="support-tabs">
+            <div class="sp-tabs-list" id="support-tickets"></div>
+            <button type="button" class="sp-new" id="support-new">+ Новый чат</button>
+        </div>
+        <div class="sp-admin" id="support-admin" hidden>
+            <div class="sp-admin-head">
+                <span>Все обращения</span>
+                <button type="button" class="sp-new" id="admin-refresh">Обновить</button>
+            </div>
+            <div class="sp-admin-list" id="admin-list"></div>
+        </div>
         <div class="sp-notice" id="support-notice" hidden></div>
         <div class="chat" id="chat-list"></div>
         <form class="chat-input" id="chat-form" autocomplete="off">
@@ -188,6 +199,7 @@
     <script src="legal_terms.js"></script>
     <script src="legal_privacy.js"></script>
     <script src="app.js"></script>
+    <script src="support_ui.js"></script>
 </body>
 </html>
 
