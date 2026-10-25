@@ -674,20 +674,35 @@ def handle_ticket_text(chat_id, user, text):
 
 
 def send_ticket_reply(ticket, answer):
-    """Отправляет ответ пользователю, обновляет статус обращения. Закрытое обращение не отвечается."""
+    """Отправляет ответ пользователю в бот и в историю мини приложения. Закрытое обращение не отвечается."""
     if ticket.get("status") == "closed":
         return False
-    ticket["status"] = "answered"
     ticket["reply"] = answer
-    db.save_ticket(ticket)
+    ticket["status"] = "answered"
+    db.append_ticket_message(ticket, "admin", answer)
     call("sendMessage", {"chat_id": int(ticket["user_id"]),
                          "text": f"Ответ поддержки на обращение #{ticket['id']}:\n\n{answer}"})
     return True
 
 
+def notify_admin_ticket_message(ticket, text):
+    """Сообщение пользователя из мини приложения по уже открытому обращению: уведомляем админа с кнопками."""
+    if not ADMIN_CHAT_ID:
+        return
+    who = html_escape(ticket.get("name") or "без имени")
+    call("sendMessage", {
+        "chat_id": ADMIN_CHAT_ID,
+        "text": (f"💬 Новое сообщение в обращении #{ticket['id']}\n"
+                 f"От: {who} (ID {ticket['user_id']})\n\n"
+                 f"{html_escape(text)}"),
+        "parse_mode": "HTML",
+        "reply_markup": ticket_admin_markup(ticket["id"]),
+    })
+
+
 def close_ticket(ticket):
     ticket["status"] = "closed"
-    db.save_ticket(ticket)
+    db.append_ticket_message(ticket, "system", "Обращение закрыто поддержкой.")
     call("sendMessage", {"chat_id": int(ticket["user_id"]),
                          "text": f"Обращение #{ticket['id']} закрыто. Если вопрос остался, напишите новое обращение."})
 
@@ -810,6 +825,9 @@ def handle_message(message):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         # Данные для мини приложения: статус подписки и пробного периода (без секретов)
+        if "support=" in self.path:
+            self._support_get()
+            return
         if "servers=" in self.path:
             self._servers()
             return
@@ -817,6 +835,61 @@ class handler(BaseHTTPRequestHandler):
             self._me()
             return
         self._reply(200, "bot is alive")
+
+    def _json(self, code, data):
+        body = json.dumps(data, ensure_ascii=False)
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
+
+    def do_OPTIONS(self):
+        self._json(200, {"ok": True})
+
+    def _support_get(self):
+        """История обращения пользователя из мини приложения."""
+        uid = request_user_id(self.path)
+        if not uid:
+            self._json(403, {"error": "forbidden"})
+            return
+        ticket = db.latest_user_ticket(uid)
+        if not ticket:
+            self._json(200, {"ticket": None, "messages": []})
+            return
+        self._json(200, {"ticket": {"id": ticket["id"], "status": ticket.get("status", "open")},
+                         "messages": db.ticket_messages(ticket)})
+
+    def _support_post(self, length):
+        """Новое сообщение пользователя из мини приложения. Создаёт обращение или дописывает в открытое."""
+        data = json.loads(self.rfile.read(length) or b"{}")
+        uid = verify_init_data(data.get("init", ""))
+        text = str(data.get("text", "")).strip()
+        if not uid:
+            self._json(403, {"error": "forbidden"})
+            return
+        if not text or len(text) > 2000:
+            self._json(400, {"error": "Сообщение пустое или слишком длинное (до 2000 символов)."})
+            return
+        if not db.support_allowed(uid):
+            self._json(429, {"error": "Подождите пару секунд перед следующим сообщением."})
+            return
+        user = {"id": uid, "first_name": data.get("name", "")}
+        ticket = db.latest_user_ticket(uid)
+        if ticket and ticket.get("status") != "closed":
+            db.append_ticket_message(ticket, "user", text)
+            notify_admin_ticket_message(ticket, text)
+        else:
+            ticket_id = db.create_ticket(uid, user["first_name"], text)
+            notify_admin_new_ticket(db.get_ticket(ticket_id))
+        self._support_get_response(uid)
+
+    def _support_get_response(self, uid):
+        ticket = db.latest_user_ticket(uid)
+        self._json(200, {"ticket": {"id": ticket["id"], "status": ticket.get("status", "open")} if ticket else None,
+                         "messages": db.ticket_messages(ticket) if ticket else []})
 
     def _servers(self):
         """Персональный список серверов пользователя для мини приложения. Без доступа — пусто."""
@@ -853,10 +926,18 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(body.encode("utf-8"))
 
     def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0))
+        # Сообщения из чата мини приложения (проверяются по подписи initData, без секрета вебхука)
+        if self.path.startswith("/api/webhook?support") or "support=" in self.path:
+            try:
+                self._support_post(length)
+            except Exception as exc:
+                print("support error:", exc)
+                self._json(500, {"error": "Не удалось отправить сообщение."})
+            return
         if WEBHOOK_SECRET and self.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
             self._reply(403, "forbidden")
             return
-        length = int(self.headers.get("Content-Length", 0))
         try:
             update = json.loads(self.rfile.read(length) or b"{}")
             if "pre_checkout_query" in update:

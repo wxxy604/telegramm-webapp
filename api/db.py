@@ -209,10 +209,44 @@ def pop_admin_reply_wait(admin_id):
 def create_ticket(user_id, name, text):
     """Создаёт обращение в поддержку и возвращает его номер."""
     ticket_id = _cmd("INCR", "support:seq")
+    now = int(time.time())
     ticket = {"id": ticket_id, "user_id": str(user_id), "name": name, "text": text,
-              "created": int(time.time()), "status": "open", "reply": None}
+              "created": now, "status": "open", "reply": None,
+              "messages": [{"from": "user", "text": text, "ts": now}]}
     _cmd("SET", f"support:ticket:{ticket_id}", json.dumps(ticket, ensure_ascii=False))
+    _cmd("SET", f"support:last:{user_id}", str(ticket_id))
     return ticket_id
+
+
+def latest_user_ticket(user_id):
+    """Последнее обращение пользователя (открытое или закрытое) или None."""
+    tid = _cmd("GET", f"support:last:{user_id}")
+    return get_ticket(int(tid)) if tid else None
+
+
+def ticket_messages(ticket):
+    """История переписки. Старые обращения без поля messages восстанавливаются из text и reply."""
+    msgs = list(ticket.get("messages") or [])
+    if not msgs:
+        msgs.append({"from": "user", "text": ticket.get("text", ""), "ts": ticket.get("created", 0)})
+        if ticket.get("reply"):
+            msgs.append({"from": "admin", "text": ticket["reply"], "ts": ticket.get("created", 0)})
+    return msgs
+
+
+def append_ticket_message(ticket, sender, text):
+    """Дописывает сообщение в историю и сохраняет обращение. Сообщение пользователя переоткрывает обращение."""
+    msgs = ticket_messages(ticket)
+    msgs.append({"from": sender, "text": text, "ts": int(time.time())})
+    ticket["messages"] = msgs
+    if sender == "user":
+        ticket["status"] = "open"  # пользователь написал снова: обращение снова открыто
+    save_ticket(ticket)
+
+
+def support_allowed(user_id):
+    """Не чаще одного сообщения в 3 секунды с одного пользователя (защита от спама)."""
+    return _cmd("SET", f"support:rate:{user_id}", "1", "NX", "EX", "3") == "OK"
 
 
 def get_ticket(ticket_id):
