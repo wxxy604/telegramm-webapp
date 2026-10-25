@@ -1,88 +1,127 @@
-// Переключение обращений: список пользователя, «Новый чат» и панель админа.
-// Подключается после app.js и использует его функции (supportState, renderChat, applySupport и т.д.).
+// Поддержка в мини приложении: чат, выпадающий список обращений, «Новый чат», панель админа.
+// Подключается после app.js. Использует его функции: $, toast, haptic, renderChat, confirmBox,
+// SUPPORT_API, STATUS_TEXT, tg, user, supportSending.
 (function () {
     const ICON = { open: "🟡", answered: "🟢", closed: "⚪" };
-    let adminMode = false;
-    let activeTicketId = null;
+    const STATE = {
+        admin: false,
+        activeId: null,      // обращение, открытое в чате (выбор клиента)
+        newChat: false,      // режим «Новый чат»: следующее сообщение создаст обращение
+        tickets: [],         // список обращений пользователя (для выпадающего списка)
+        adminItems: [],      // список обращений админа
+    };
 
-    function ticketLabel(t) {
-        const d = new Date((t.last_ts || t.created || 0) * 1000);
-        const when = d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
-        return { when, icon: ICON[t.status] || "🟡" };
-    }
-
-    function escapeHtml(s) {
+    function esc(s) {
         return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
 
-    // Список обращений пользователя (плашки сверху)
-    function renderUserTickets(tickets, currentId) {
-        const box = $("support-tickets");
-        box.innerHTML = "";
-        if (!tickets || tickets.length === 0) {
-            box.hidden = true;
-            return;
-        }
-        box.hidden = false;
-        tickets.forEach(t => {
+    function dateLabel(ts) {
+        return new Date((ts || 0) * 1000).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
+    }
+
+    function initDataParam() {
+        return encodeURIComponent(tg && tg.initData ? tg.initData : "");
+    }
+
+    // ---- Выпадающий список чатов (пользователь) ----
+    function renderDropdown() {
+        const menu = $("support-menu");
+        const cur = STATE.tickets.find(t => t.id === STATE.activeId);
+        const title = STATE.newChat ? "✏️ Новый чат" : cur ? `${ICON[cur.status] || "🟡"} Обращение #${cur.id}` : "Выберите чат";
+        $("support-current").textContent = title + " ▾";
+        menu.innerHTML = "";
+        STATE.tickets.forEach(t => {
             const b = document.createElement("button");
             b.type = "button";
-            b.className = "sp-tab" + (t.id === currentId ? " active" : "");
-            const lab = ticketLabel(t);
-            b.innerHTML = `<span class="sp-tab-top">${lab.icon} #${t.id}</span><span class="sp-tab-sub"></span>`;
-            b.querySelector(".sp-tab-sub").textContent = (t.preview || "").slice(0, 26) || lab.when;
-            b.addEventListener("click", () => openUserTicket(t.id));
-            box.appendChild(b);
+            b.className = "sp-drop-item" + (t.id === STATE.activeId && !STATE.newChat ? " active" : "");
+            b.innerHTML = `<span class="sp-drop-top">${ICON[t.status] || "🟡"} #${t.id} · ${dateLabel(t.last_ts || t.created)}</span>` +
+                `<span class="sp-drop-sub"></span>`;
+            b.querySelector(".sp-drop-sub").textContent = (t.preview || "").slice(0, 40) || "—";
+            b.addEventListener("click", () => selectUserTicket(t.id));
+            menu.appendChild(b);
         });
+        const nb = document.createElement("button");
+        nb.type = "button";
+        nb.className = "sp-drop-item sp-drop-new";
+        nb.textContent = "+ Новый чат";
+        nb.addEventListener("click", startNewChat);
+        menu.appendChild(nb);
     }
 
-    async function openUserTicket(id) {
+    function toggleDropdown(force) {
+        const menu = $("support-menu");
+        const open = typeof force === "boolean" ? force : menu.hidden;
+        menu.hidden = !open;
+        $("support-current").setAttribute("aria-expanded", String(open));
+    }
+
+    // Выбор чата: сразу переключаем, данные подтягиваем с сервера
+    function selectUserTicket(id) {
+        toggleDropdown(false);
+        STATE.activeId = id;
+        STATE.newChat = false;
+        haptic();
+        loadUserState(true);
+    }
+
+    function startNewChat() {
+        toggleDropdown(false);
+        STATE.newChat = true;
+        STATE.activeId = null;
+        renderChat([], false);
+        $("support-status").textContent = "Новый чат · опишите вопрос";
+        $("support-status").className = "sp-status";
+        $("support-close").hidden = true;
+        setInputEnabled(true, "Опишите вопрос...");
+        $("chat-text").focus();
+        haptic();
+        renderDropdown();
+    }
+
+    // ---- Опрос состояния пользователя ----
+    async function loadUserState(immediate) {
+        if (!tg || !tg.initData || !user) return;
         if (supportSending) return;
+        const q = STATE.activeId && !STATE.newChat ? `&ticket_id=${STATE.activeId}` : "";
         try {
-            await supportRequest({ action: "open", ticket_id: id });
-            haptic();
-        } catch (err) {
-            toast(err.message);
-        }
-    }
-
-
-    // ---- Админ ----
-    function renderAdminList(items) {
-        const list = $("admin-list");
-        list.innerHTML = "";
-        if (!items || items.length === 0) {
-            const e = document.createElement("div");
-            e.className = "chat-empty";
-            e.textContent = "Обращений пока нет.";
-            list.appendChild(e);
-            return;
-        }
-        items.forEach(t => {
-            const row = document.createElement("button");
-            row.type = "button";
-            row.className = "sp-admin-item" + (t.id === activeTicketId ? " active" : "");
-            const lab = ticketLabel(t);
-            row.innerHTML = `<span class="sp-admin-dot ${escapeHtml(t.status || "open")}"></span>` +
-                `<span class="sp-admin-body"><span class="sp-admin-title">#${t.id} · ${escapeHtml(t.name || "без имени")}</span>` +
-                `<span class="sp-admin-prev"></span></span><span class="sp-admin-when">${lab.when}</span>`;
-            row.querySelector(".sp-admin-prev").textContent = t.preview || "—";
-            row.addEventListener("click", () => adminOpen(t.id));
-            list.appendChild(row);
-        });
-    }
-
-    async function loadAdminList() {
-        try {
-            const r = await fetch(`${SUPPORT_API}?support=all&init=${encodeURIComponent(tg.initData)}`, { cache: "no-store" });
+            const r = await fetch(`${SUPPORT_API}?support=1&init=${initDataParam()}${q}`, { cache: "no-store" });
             if (!r.ok) throw new Error("bad status " + r.status);
-            renderAdminList((await r.json()).tickets || []);
+            const data = await r.json();
+            if (data.admin) {
+                enterAdminMode();
+                return;
+            }
+            leaveAdminMode();
+            STATE.tickets = data.tickets || [];
+            if (!STATE.newChat) {
+                STATE.activeId = data.ticket ? data.ticket.id : null;
+                renderUserChat(data);
+            }
+            renderDropdown();
         } catch (e) {
-            $("admin-list").textContent = "Нет связи с сервером";
+            if (immediate) $("support-status").textContent = "Нет связи с сервером";
         }
     }
 
-    async function adminRequest(payload) {
+
+    function renderUserChat(data) {
+        const t = data.ticket;
+        $("support-status").textContent = t ? `Обращение #${t.id} · ${STATUS_TEXT[t.status] || "Открыто"}` : "Напишите, с чем нужна помощь";
+        $("support-status").className = "sp-status " + (t ? (t.status || "open") : "");
+        $("support-close").hidden = !t || t.status === "closed";
+        $("support-close").onclick = closeUserTicket;
+        renderChat(data.messages || [], true);
+        setInputEnabled(true, "Напишите сообщение...");
+    }
+
+    function setInputEnabled(enabled, placeholder) {
+        $("chat-text").disabled = !enabled;
+        $("chat-send").disabled = !enabled;
+        $("chat-text").placeholder = placeholder;
+        $("chat-form").dataset.mode = enabled ? (STATE.admin ? "admin-reply" : "user") : "closed";
+    }
+
+    async function postSupport(payload) {
         const r = await fetch(`${SUPPORT_API}?support=1`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -93,34 +132,99 @@
         return data;
     }
 
+    // Пользователь пишет: в открытое обращение или новое (если «Новый чат»)
+    async function userSend(text) {
+        const payload = { action: "send", text, name: user ? user.first_name : "" };
+        if (!STATE.newChat && STATE.activeId) payload.ticket_id = STATE.activeId;
+        const data = await postSupport(payload);
+        STATE.newChat = false;
+        STATE.tickets = data.tickets || STATE.tickets;
+        STATE.activeId = data.ticket ? data.ticket.id : STATE.activeId;
+        renderUserChat(data);
+        renderDropdown();
+    }
+
+    async function closeUserTicket() {
+        confirmBox("Закрыть обращение? Новое сообщение откроет его снова.", async () => {
+            try {
+                const data = await postSupport({ action: "close", ticket_id: STATE.activeId });
+                STATE.tickets = data.tickets || STATE.tickets;
+                renderUserChat(data);
+                renderDropdown();
+                toast("Обращение закрыто");
+            } catch (err) {
+                toast(err.message);
+            }
+        });
+    }
+
+    // ---- Админ ----
+    function enterAdminMode() {
+        STATE.admin = true;
+        $("support-admin").hidden = false;
+        $("support-tabs").hidden = true;
+        $("support-new").hidden = true;
+        loadAdminList();
+    }
+
+    function leaveAdminMode() {
+        if (!STATE.admin) return;
+        STATE.admin = false;
+        $("support-admin").hidden = true;
+        $("support-tabs").hidden = false;
+        $("support-new").hidden = false;
+    }
+
+    async function loadAdminList() {
+        try {
+            const r = await fetch(`${SUPPORT_API}?support=all&init=${initDataParam()}`, { cache: "no-store" });
+            if (!r.ok) throw new Error("bad status " + r.status);
+            STATE.adminItems = (await r.json()).tickets || [];
+            renderAdminList();
+        } catch (e) {
+            $("admin-list").textContent = "Нет связи с сервером";
+        }
+    }
+
+    function renderAdminList() {
+        const list = $("admin-list");
+        list.innerHTML = "";
+        if (STATE.adminItems.length === 0) {
+            const e = document.createElement("div");
+            e.className = "chat-empty";
+            e.textContent = "Обращений пока нет.";
+            list.appendChild(e);
+            return;
+        }
+        STATE.adminItems.forEach(t => {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "sp-admin-item" + (t.id === STATE.activeId ? " active" : "");
+            row.innerHTML = `<span class="sp-admin-dot ${esc(t.status || "open")}"></span>` +
+                `<span class="sp-admin-body"><span class="sp-admin-title">#${t.id} · ${esc(t.name || "без имени")}</span>` +
+                `<span class="sp-admin-prev"></span></span><span class="sp-admin-when">${dateLabel(t.last_ts)}</span>`;
+            row.querySelector(".sp-admin-prev").textContent = t.preview || "—";
+            row.addEventListener("click", () => adminOpen(t.id));
+            list.appendChild(row);
+        });
+    }
+
     function applyAdminTicket(data) {
         const t = data.ticket;
         if (!t) return;
-        activeTicketId = t.id;
-        supportState = { ticket: { id: t.id, status: t.status }, messages: data.messages || [], admin: true };
-        const status = $("support-status");
-        status.textContent = `Обращение #${t.id} · ${t.name || "без имени"} · ${STATUS_TEXT[t.status] || "Открыто"}`;
-        status.className = "sp-status " + (t.status || "open");
-        const closeBtn = $("support-close");
-        closeBtn.hidden = t.status === "closed";
-        closeBtn.onclick = () => adminClose(t.id);
-        renderChat(supportState.messages, false);
-        setAdminReplyMode(t.status !== "closed");
-    }
-
-    // Поле ввода для админа — это ответ пользователю
-    function setAdminReplyMode(enabled) {
-        const input = $("chat-text");
-        input.disabled = !enabled;
-        input.placeholder = enabled ? "Ответ пользователю..." : "Обращение закрыто";
-        $("chat-send").disabled = !enabled;
-        $("chat-form").dataset.mode = enabled ? "admin-reply" : "closed";
+        STATE.activeId = t.id;
+        $("support-status").textContent = `Обращение #${t.id} · ${t.name || "без имени"} · ${STATUS_TEXT[t.status] || "Открыто"}`;
+        $("support-status").className = "sp-status " + (t.status || "open");
+        $("support-close").hidden = t.status === "closed";
+        $("support-close").onclick = () => adminClose(t.id);
+        renderChat(data.messages || [], false);
+        setInputEnabled(t.status !== "closed", t.status === "closed" ? "Обращение закрыто" : "Ответ пользователю...");
+        renderAdminList();
     }
 
     async function adminOpen(id) {
         try {
-            applyAdminTicket(await adminRequest({ action: "admin_open", ticket_id: id }));
-            loadAdminList();
+            applyAdminTicket(await postSupport({ action: "admin_open", ticket_id: id }));
         } catch (err) {
             toast(err.message);
         }
@@ -129,7 +233,7 @@
     async function adminClose(id) {
         confirmBox("Закрыть обращение? Пользователь получит уведомление.", async () => {
             try {
-                applyAdminTicket(await adminRequest({ action: "admin_close", ticket_id: id }));
+                applyAdminTicket(await postSupport({ action: "admin_close", ticket_id: id }));
                 loadAdminList();
                 haptic();
             } catch (err) {
@@ -138,63 +242,50 @@
         });
     }
 
-    // Переключаем режим: админ видит свою панель, пользователь — свои обращения
-    function applyModeFromState(state) {
-        adminMode = !!state.admin;
-        $("support-admin").hidden = !adminMode;
-        $("support-new").hidden = adminMode;
-        $("support-tabs").hidden = adminMode;
-        if (!adminMode) renderUserTickets(state.tickets, state.ticket ? state.ticket.id : null);
-    }
-
-    // Перехватываем отрисовку из app.js: сначала переключаем режим, затем рисуем чат
-    const baseApplySupport = applySupport;
-    applySupport = function (data) {
-        if (data.admin) {
-            // Админ: обновляем только панель обращений, открытый чат не трогаем
-            applyModeFromState(data);
-            loadAdminList();
-            return;
-        }
-        applyModeFromState(data);
-        baseApplySupport(data);
-        if (!adminMode) {
-            activeTicketId = data.ticket ? data.ticket.id : null;
-            $("chat-form").dataset.mode = "user";
-            $("chat-text").disabled = false;
-            $("chat-send").disabled = false;
-            $("chat-text").placeholder = "Напишите сообщение...";
-        }
-        if (adminMode) loadAdminList();
-    };
-
-    // Отправка: для админа — ответ пользователю, для пользователя — штатная отправка из app.js
+    // ---- Отправка формы: админ отвечает, пользователь пишет ----
     $("chat-form").addEventListener("submit", async e => {
-        const form = $("chat-form");
-        if (form.dataset.mode !== "admin-reply") {
-            if (form.dataset.mode === "closed") e.preventDefault();
-            return;
-        }
         e.preventDefault();
         e.stopImmediatePropagation();
+        const mode = $("chat-form").dataset.mode;
+        if (mode === "closed") return;
         const input = $("chat-text");
         const text = input.value.trim();
-        if (!text || !activeTicketId) return;
+        if (!text || supportSending) return;
+        supportSending = true;
         $("chat-send").disabled = true;
         try {
-            const data = await adminRequest({ action: "admin_reply", ticket_id: activeTicketId, text });
-            applyAdminTicket(data);
-            loadAdminList();
+            if (STATE.admin) {
+                if (!STATE.activeId) return;
+                applyAdminTicket(await postSupport({ action: "admin_reply", ticket_id: STATE.activeId, text }));
+                loadAdminList();
+            } else {
+                await userSend(text);
+            }
             input.value = "";
             input.style.height = "";
             haptic();
         } catch (err) {
             toast(err.message);
         } finally {
-            $("chat-send").disabled = false;
+            supportSending = false;
+            $("chat-send").disabled = $("chat-text").disabled;
         }
     }, true);
 
+    // ---- Элементы управления и опрос ----
+    $("support-current").addEventListener("click", () => toggleDropdown());
     $("support-new").addEventListener("click", startNewChat);
     $("admin-refresh").addEventListener("click", loadAdminList);
+
+    // Опрос: админ обновляет список, пользователь — свой открытый чат
+    setInterval(() => {
+        if (STATE.admin) loadAdminList();
+        else loadUserState(false);
+    }, 8000);
+
+    const prevShowTab = showTab;
+    showTab = function (tab) {
+        prevShowTab(tab);
+        if (tab === "support") loadUserState(true);
+    };
 })();
