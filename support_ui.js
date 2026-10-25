@@ -2,6 +2,80 @@
 // Подключается после app.js. Использует его функции: $, toast, haptic, renderChat, confirmBox,
 // SUPPORT_API, STATUS_TEXT, tg, user, supportSending.
 (function () {
+    // Константы и общие функции поддержки (раньше были в app.js, перенесены сюда)
+    const SUPPORT_API = "https://telegramm-webapp.vercel.app/api/webhook";
+    const STATUS_TEXT = { open: "Открыто", answered: "Есть ответ", closed: "Закрыто" };
+    let supportSending = false;
+    const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+
+    function fmtTime(ts) {
+        if (!ts) return "";
+        return new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function dayLabel(ts) {
+        const d = new Date(ts * 1000);
+        const now = new Date();
+        const y = new Date(now);
+        y.setDate(now.getDate() - 1);
+        if (d.toDateString() === now.toDateString()) return "Сегодня";
+        if (d.toDateString() === y.toDateString()) return "Вчера";
+        return d.getDate() + " " + MONTHS[d.getMonth()];
+    }
+
+    // Отрисовка переписки: пузыри, разделители дат, системные строки
+    function renderChat(messages, keepScroll) {
+        const list = $("chat-list");
+        const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+        list.innerHTML = "";
+        if (!messages || messages.length === 0) {
+            const el = document.createElement("div");
+            el.className = "chat-empty";
+            el.innerHTML = '<div class="chat-empty-icon">💬</div>Опишите вопрос ниже.<br>Ответ придёт сюда и в бота.';
+            list.appendChild(el);
+            return;
+        }
+        let lastDay = "";
+        messages.forEach(m => {
+            const day = m.ts ? dayLabel(m.ts) : "";
+            if (day && day !== lastDay) {
+                const sep = document.createElement("div");
+                sep.className = "chat-date";
+                sep.textContent = day;
+                list.appendChild(sep);
+                lastDay = day;
+            }
+            if (m.from === "system") {
+                const s = document.createElement("div");
+                s.className = "bubble system";
+                s.textContent = m.text;
+                list.appendChild(s);
+                return;
+            }
+            const row = document.createElement("div");
+            row.className = "msg-row " + (m.from === "user" ? "mine" : "theirs");
+            const b = document.createElement("div");
+            b.className = "bubble " + (m.from === "user" ? "user" : "admin");
+            b.textContent = m.text;
+            const t = document.createElement("span");
+            t.className = "bubble-time";
+            t.textContent = fmtTime(m.ts);
+            b.appendChild(t);
+            row.appendChild(b);
+            list.appendChild(row);
+        });
+        if (!keepScroll || nearBottom) list.scrollTop = list.scrollHeight;
+    }
+
+    // Подтверждение действия (нативное окно Telegram, если доступно)
+    function confirmBox(text, onYes) {
+        if (tg && typeof tg.showConfirm === "function") {
+            tg.showConfirm(text, ok => { if (ok) onYes(); });
+        } else if (window.confirm(text)) {
+            onYes();
+        }
+    }
+
     const ICON = { open: "🟡", answered: "🟢", closed: "⚪" };
     const STATE = {
         admin: false,
@@ -159,12 +233,23 @@
     }
 
     // ---- Админ ----
+    // Режим админа: панель обращений с выпадающим списком, без «Новый чат» (админ не создаёт обращения)
     function enterAdminMode() {
         STATE.admin = true;
         $("support-admin").hidden = false;
         $("support-tabs").hidden = true;
         $("support-new").hidden = true;
+        $("support-admin-toggle").hidden = false;
         loadAdminList();
+    }
+
+    function toggleAdminList(force) {
+        const body = $("admin-list");
+        const open = typeof force === "boolean" ? force : body.hidden;
+        body.hidden = !open;
+        $("support-admin-toggle").setAttribute("aria-expanded", String(open));
+        $("support-admin-toggle").textContent = (open ? "Скрыть обращения ▴" : "Показать обращения ▾") +
+            (STATE.adminItems.length ? ` (${STATE.adminItems.length})` : "");
     }
 
     function leaveAdminMode() {
@@ -181,6 +266,7 @@
             if (!r.ok) throw new Error("bad status " + r.status);
             STATE.adminItems = (await r.json()).tickets || [];
             renderAdminList();
+            toggleAdminList(!$("admin-list").hidden);
         } catch (e) {
             $("admin-list").textContent = "Нет связи с сервером";
         }
@@ -276,12 +362,28 @@
     $("support-current").addEventListener("click", () => toggleDropdown());
     $("support-new").addEventListener("click", startNewChat);
     $("admin-refresh").addEventListener("click", loadAdminList);
+    $("support-admin-toggle").addEventListener("click", () => toggleAdminList());
 
     // Опрос: админ обновляет список, пользователь — свой открытый чат
     setInterval(() => {
-        if (STATE.admin) loadAdminList();
-        else loadUserState(false);
-    }, 8000);
+        if (STATE.admin) {
+            loadAdminList();
+            if (STATE.activeId) refreshAdminChat();
+        } else {
+            loadUserState(false);
+        }
+    }, 6000);
+
+    // Админ: обновляем открытый чат, чтобы новые сообщения пользователя появлялись сами
+    async function refreshAdminChat() {
+        if (supportSending || !STATE.activeId) return;
+        try {
+            const data = await postSupport({ action: "admin_open", ticket_id: STATE.activeId });
+            applyAdminTicket(data);
+        } catch (e) {
+            /* тихо: следующий опрос повторит */
+        }
+    }
 
     const prevShowTab = showTab;
     showTab = function (tab) {
