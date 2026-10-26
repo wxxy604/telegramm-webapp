@@ -24,8 +24,17 @@
     }
 
     // Отрисовка переписки: пузыри, разделители дат, системные строки
+    let lastChatSig = null;
+    let lastChatCount = 0;
     function renderChat(messages, keepScroll) {
         const list = $("chat-list");
+        // Перерисовываем только если переписка изменилась: опрос не должен мигать и сбивать прокрутку
+        const sig = JSON.stringify(messages || []);
+        if (sig === lastChatSig) return;
+        // Новые сообщения (которых не было при прошлой отрисовке) получают анимацию появления
+        const prevCount = lastChatCount;
+        lastChatSig = sig;
+        lastChatCount = (messages || []).length;
         const nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
         list.innerHTML = "";
         if (!messages || messages.length === 0) {
@@ -36,7 +45,7 @@
             return;
         }
         let lastDay = "";
-        messages.forEach(m => {
+        messages.forEach((m, idx) => {
             const day = m.ts ? dayLabel(m.ts) : "";
             if (day && day !== lastDay) {
                 const sep = document.createElement("div");
@@ -53,7 +62,7 @@
                 return;
             }
             const row = document.createElement("div");
-            row.className = "msg-row " + (m.from === "user" ? "mine" : "theirs");
+            row.className = "msg-row " + (m.from === "user" ? "mine" : "theirs") + (idx >= prevCount && prevCount > 0 ? " is-new" : "");
             const b = document.createElement("div");
             b.className = "bubble " + (m.from === "user" ? "user" : "admin");
             b.textContent = m.text;
@@ -147,7 +156,7 @@
         $("support-status").className = "sp-status";
         $("support-close").hidden = true;
         setInputEnabled(true, "Опишите вопрос...");
-        $("chat-text").focus();
+        // Фокус намеренно не ставим: на телефоне он сразу открывает клавиатуру
         haptic();
         renderDropdown();
     }
@@ -171,7 +180,13 @@
                 STATE.activeId = data.ticket ? data.ticket.id : null;
                 renderUserChat(data);
             }
+            // Открытый чат на экране — сообщения сразу прочитаны
+            if (STATE.activeId && supportScreenActive()) {
+                const cur = STATE.tickets.find(t => t.id === STATE.activeId);
+                if (cur) markSeen(cur.id, cur.last_admin_ts || Math.floor(Date.now() / 1000));
+            }
             renderDropdown();
+            renderSupportNotice();
         } catch (e) {
             if (immediate) $("support-status").textContent = "Нет связи с сервером";
         }
@@ -189,10 +204,14 @@
     }
 
     function setInputEnabled(enabled, placeholder) {
-        $("chat-text").disabled = !enabled;
+        const input = $("chat-text");
+        // Опрос не должен стирать то, что человек уже печатает
+        const busy = document.activeElement === input || input.value.trim() !== "";
+        input.disabled = !enabled;
         $("chat-send").disabled = !enabled;
-        $("chat-text").placeholder = placeholder;
+        input.placeholder = placeholder;
         $("chat-form").dataset.mode = enabled ? (STATE.admin ? "admin-reply" : "user") : "closed";
+        return busy;
     }
 
     async function postSupport(payload) {
@@ -272,8 +291,12 @@
         }
     }
 
+    let lastAdminSig = null;
     function renderAdminList() {
         const list = $("admin-list");
+        const sig = JSON.stringify(STATE.adminItems);
+        if (sig === lastAdminSig) return;
+        lastAdminSig = sig;
         list.innerHTML = "";
         if (STATE.adminItems.length === 0) {
             const e = document.createElement("div");
@@ -365,14 +388,86 @@
     $("support-admin-toggle").addEventListener("click", () => toggleAdminList());
 
     // Опрос: админ обновляет список, пользователь — свой открытый чат
-    setInterval(() => {
+    // ---- Непрочитанные сообщения поддержки ----
+    // Отметка «прочитано» хранится по обращению: последнее просмотренное время сообщения админа.
+    const SEEN_KEY = "support_seen";
+    function seenMap() {
+        try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "{}"); } catch (e) { return {}; }
+    }
+    function markSeen(ticketId, ts) {
+        const m = seenMap();
+        m[ticketId] = Math.max(m[ticketId] || 0, ts || Math.floor(Date.now() / 1000));
+        localStorage.setItem(SEEN_KEY, JSON.stringify(m));
+    }
+    // Непрочитанные ответы админа по обращениям пользователя
+    function unreadCount() {
+        if (STATE.admin) return 0;
+        const seen = seenMap();
+        return STATE.tickets.reduce((n, t) => {
+            if (t.id === STATE.activeId && $("screen-support") && $("screen-support").classList.contains("active")) return n;
+            const last = t.last_admin_ts || 0;
+            return n + (last > (seen[t.id] || 0) ? 1 : 0);
+        }, 0);
+    }
+    // Добавляем строку в колокольчик: «У вас новое сообщение от поддержки»
+    function renderSupportNotice() {
+        const n = unreadCount();
+        const list = $("notif-list");
+        if (!list) return;
+        const old = list.querySelector(".sp-notice-item");
+        if (old) old.remove();
+        if (n === 0) return;
+        const row = document.createElement("div");
+        row.className = "drop-item sp-notice-item";
+        row.textContent = n === 1 ? "💬 У вас новое сообщение от поддержки" : `💬 Новых сообщений от поддержки: ${n}`;
+        row.addEventListener("click", () => {
+            toggleDropdown(false);
+            $("notif-drop").classList.remove("open");
+            if (typeof showTab === "function") showTab("support");
+        });
+        list.prepend(row);
+        const dot = $("notif-dot");
+        if (dot) dot.hidden = false;
+    }
+
+    // Живое обновление: опрос только пока открыт экран поддержки, раз в 3 секунды
+    function supportScreenActive() {
+        const s = $("screen-support");
+        return !!s && s.classList.contains("active") && !document.hidden;
+    }
+
+    function tickSupport() {
+        if (!supportScreenActive() || supportSending) {
+            // Экран закрыт — просто обновляем колокольчик по последнему опросу
+            if (!STATE.admin && STATE.tickets.length) renderSupportNotice();
+            return;
+        }
         if (STATE.admin) {
             loadAdminList();
             if (STATE.activeId) refreshAdminChat();
         } else {
             loadUserState(false);
         }
-    }, 6000);
+    }
+
+    setInterval(tickSupport, 3000);
+
+    // Фоновая проверка для колокольчика: раз в 20 секунд, даже когда экран поддержки закрыт
+    async function backgroundCheck() {
+        if (STATE.admin || supportScreenActive() || supportSending) return;
+        if (!tg || !tg.initData || !user) return;
+        try {
+            const r = await fetch(`${SUPPORT_API}?support=1&init=${initDataParam()}`, { cache: "no-store" });
+            if (!r.ok) return;
+            const data = await r.json();
+            if (data.admin) return;
+            STATE.tickets = data.tickets || [];
+            renderSupportNotice();
+        } catch (e) { /* тихо: попробуем в следующий раз */ }
+    }
+    setInterval(backgroundCheck, 20000);
+    // Вернулись в приложение или на вкладку — сразу подтягиваем свежие сообщения
+    document.addEventListener("visibilitychange", () => { if (supportScreenActive()) tickSupport(); });
 
     // Админ: обновляем открытый чат, чтобы новые сообщения пользователя появлялись сами
     async function refreshAdminChat() {

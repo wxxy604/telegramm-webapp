@@ -336,6 +336,21 @@ body[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.55); }
 .chat-send:active { transform: scale(0.92); }
 .chat-send:disabled { opacity: .4; }
 
+/* ===== Анимация новых сообщений ===== */
+@keyframes msg-in {
+    0%   { opacity: 0; transform: translateY(10px) scale(.96); }
+    60%  { opacity: 1; transform: translateY(-2px) scale(1.01); }
+    100% { opacity: 1; transform: none; }
+}
+.msg-row.is-new .bubble { animation: msg-in .38s cubic-bezier(.2,.8,.2,1) both; }
+.msg-row.is-new.theirs .bubble { transform-origin: left bottom; }
+.msg-row.is-new.mine .bubble { transform-origin: right bottom; }
+.bubble.system { animation: none; }
+.chat { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+    .msg-row.is-new .bubble { animation: none; }
+}
+
 /* ===== Выпадающий список чатов ===== */
 .sp-tabs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; position: relative; z-index: 5; }
 .sp-tabs[hidden] { display: none; }
