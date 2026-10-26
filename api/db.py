@@ -238,8 +238,10 @@ def user_tickets(user_id):
         if t:
             msgs = ticket_messages(t)
             last = msgs[-1] if msgs else {}
+            admin_ts = [m.get("ts", 0) for m in msgs if m.get("from") == "admin"]
             out.append({"id": t["id"], "status": t.get("status", "open"), "created": t.get("created", 0),
-                        "preview": (last.get("text") or "")[:80], "last_ts": last.get("ts", t.get("created", 0))})
+                        "preview": (last.get("text") or "")[:80], "last_ts": last.get("ts", t.get("created", 0)),
+                        "last_admin_ts": max(admin_ts) if admin_ts else 0})
     return out
 
 
