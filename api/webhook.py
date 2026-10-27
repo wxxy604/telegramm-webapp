@@ -839,7 +839,12 @@ def handle_admin_command(chat_id, user, text):
     if cmd not in ("/grant", "/revoke", "/ban", "/unban", "/user"):
         return False
     if not is_admin(user):
-        return True  # не админам команды не отвечаем
+        if not ADMIN_CHAT_ID:
+            send(chat_id, f"Админ-команды не настроены: в Vercel не задана переменная ADMIN_CHAT_ID. "
+                          f"Ваш Telegram ID: {user.get('id')}. Добавьте его как ADMIN_CHAT_ID и сделайте Redeploy.", None)
+        else:
+            send(chat_id, "Нет доступа: эта команда только для администратора.", None)
+        return True
     usage = ("Команды:\n"
              "/grant ID ДНИ — выдать подписку на N дней\n"
              "/revoke ID — снять подписку\n"
@@ -857,15 +862,16 @@ def handle_admin_command(chat_id, user, text):
             return True
         days = int(parts[2])
         u = db.extend_paid(target, days)
-        send(chat_id, f"Выдано {days} дн. пользователю {target}. Доступ до {fmt_date(u.get('paid_until'))}.", None)
+        send(chat_id, f"✅ Вы выдали пользователю {target} подписку на {days} дн. "
+                      f"Доступ до {fmt_date(u.get('paid_until'))}.", None)
         call("sendMessage", {"chat_id": target, "text": f"🎁 Вам выдана подписка на {days} дн."})
     elif cmd == "/revoke":
         db.revoke_paid(target)
-        send(chat_id, f"Подписка пользователя {target} снята.", None)
+        send(chat_id, f"✅ Подписка пользователя {target} снята.", None)
     elif cmd in ("/ban", "/unban"):
         banned = cmd == "/ban"
         db.set_banned(target, banned)
-        send(chat_id, f"Пользователь {target} {'заблокирован' if banned else 'разблокирован'}.", None)
+        send(chat_id, f"✅ Вы {'заблокировали' if banned else 'разблокировали'} пользователя {target}.", None)
         if banned:
             call("sendMessage", {"chat_id": target, "text": "Доступ к сервису ограничен администратором."})
     else:  # /user
