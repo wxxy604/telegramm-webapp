@@ -35,8 +35,21 @@ CRYPTO_PRICES = {"1m": 2, "3m": 5, "12m": 18}  # цены в USDT
 SBP_PRICES = {"1m": 100, "3m": 250, "12m": 900}  # цены в рублях по СБП
 
 
+def _clean_payload(payload):
+    """Telegram отвергает reply_markup: null / пустую клавиатуру и пустой текст (400).
+    Убираем такие поля до отправки, чтобы ни один вызов не падал из-за них."""
+    p = dict(payload)
+    markup = p.get("reply_markup")
+    if markup is None or (isinstance(markup, dict) and not markup.get("inline_keyboard", markup.get("keyboard", True))):
+        p.pop("reply_markup", None)
+    if "text" in p:
+        p["text"] = (str(p["text"]) or "").strip() or "—"
+    return p
+
+
 def call(method, payload):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    payload = _clean_payload(payload)
     data = json.dumps(payload).encode("utf-8")
     req = request.Request(url, data=data, headers={"Content-Type": "application/json"})
     try:
