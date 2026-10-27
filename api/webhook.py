@@ -423,15 +423,22 @@ def screen(name, user, arg=""):
 
 
 def send(chat_id, text, markup, parse_mode=None):
-    payload = {"chat_id": chat_id, "text": text, "reply_markup": markup}
+    # Telegram отвечает 400 на reply_markup: null и на пустой текст — поэтому их не отправляем
+    text = (text or "").strip() or "—"
+    payload = {"chat_id": chat_id, "text": text}
+    if markup:
+        payload["reply_markup"] = markup
     if parse_mode:
         payload["parse_mode"] = parse_mode
     call("sendMessage", payload)
 
 
 def edit_or_send(chat_id, message_id, text, markup, parse_mode=None):
+    text = (text or "").strip() or "—"
     if message_id:
-        payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "reply_markup": markup}
+        payload = {"chat_id": chat_id, "message_id": message_id, "text": text}
+        if markup:
+            payload["reply_markup"] = markup
         if parse_mode:
             payload["parse_mode"] = parse_mode
         result = call("editMessageText", payload)
