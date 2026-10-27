@@ -666,7 +666,12 @@ def handle_start(message, user, payload):
 
 
 def is_admin(user):
-    return bool(ADMIN_CHAT_ID) and str(user.get("id")) == str(ADMIN_CHAT_ID)
+    """Админ — только владелец, чей Telegram ID совпадает с ADMIN_CHAT_ID.
+    Пустой ADMIN_CHAT_ID означает, что админа нет: все админские действия закрыты."""
+    if not ADMIN_CHAT_ID or not isinstance(user, dict):
+        return False
+    uid = user.get("id")
+    return uid is not None and str(uid) == str(ADMIN_CHAT_ID).strip()
 
 
 STATUS_TITLE = {"open": "🟡 открыто", "answered": "🟢 отвечено", "closed": "⚪ закрыто"}
