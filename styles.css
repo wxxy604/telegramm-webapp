@@ -336,6 +336,18 @@ body[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.55); }
 .chat-send:active { transform: scale(0.92); }
 .chat-send:disabled { opacity: .4; }
 
+/* ===== Полировка интерфейса поддержки ===== */
+#screen-support .sp-head { box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+#screen-support .chat { box-shadow: inset 0 1px 0 var(--line), 0 10px 26px rgba(0,0,0,.12); }
+#screen-support .chat-input { box-shadow: 0 10px 30px rgba(0,0,0,.18), inset 0 0 0 1px var(--line); }
+#screen-support .chat-input:focus-within { box-shadow: 0 10px 30px rgba(0,0,0,.22), inset 0 0 0 1px rgba(34,197,94,.45); }
+#screen-support .sp-dropdown-menu, #screen-support .sp-admin-list { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+#screen-support .sp-admin-item:hover, #screen-support .sp-drop-item:hover { background: var(--surface-2); }
+#screen-support .sp-admin-list { scroll-behavior: smooth; }
+#screen-support .sp-admin-list[hidden] { display: none; }
+#screen-support .sp-admin-list:not([hidden]) { animation: fade .22s ease both; }
+#screen-support .bubble { letter-spacing: .1px; }
+
 /* ===== Анимация новых сообщений ===== */
 @keyframes msg-in {
     0%   { opacity: 0; transform: translateY(10px) scale(.96); }
