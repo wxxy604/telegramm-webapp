@@ -73,6 +73,28 @@ def extend_paid(user_id, days):
     return user
 
 
+def is_banned(user_id):
+    """Заблокирован ли пользователь администратором."""
+    user = get_user(user_id) or {}
+    return bool(user.get("banned"))
+
+
+def set_banned(user_id, banned):
+    """Блокирует или разблокирует пользователя."""
+    user = get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    user["banned"] = bool(banned)
+    save_user(user_id, user)
+    return user
+
+
+def revoke_paid(user_id):
+    """Снимает платную подписку пользователя."""
+    user = get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    user["paid_until"] = 0
+    save_user(user_id, user)
+    return user
+
+
 def mark_invoice(invoice_id):
     """Помечает счёт Crypto Pay как учтённый. Возвращает False, если он уже учтён."""
     return _cmd("SET", f"invoice:{invoice_id}", "1", "NX") == "OK"

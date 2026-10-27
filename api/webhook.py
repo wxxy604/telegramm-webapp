@@ -309,6 +309,8 @@ def request_user_id(path):
 
 
 def has_access(user):
+    if user.get("banned"):
+        return False
     now = int(time.time())
     return user.get("paid_until", 0) > now or user.get("trial_until", 0) > now
 
@@ -556,6 +558,10 @@ SUPPORT_HOOKS_ADMIN = {
 
 
 def handle_callback(cb):
+    sender = cb.get("from") or {}
+    if db.is_banned(sender.get("id")) and not is_admin(sender):
+        call("answerCallbackQuery", {"callback_query_id": cb["id"], "text": "Доступ ограничен", "show_alert": True})
+        return
     if cb.get("data") == "ticket":
         # Всплывающее уведомление поверх чата: подсказка, что делать дальше
         call("answerCallbackQuery", {
@@ -816,10 +822,73 @@ def handle_admin_callback(cb, name, arg):
     return True
 
 
+def fmt_date(ts):
+    """Дата в формате ДД.ММ.ГГГГ или «нет», если ts пустой."""
+    if not ts:
+        return "нет"
+    return time.strftime("%d.%m.%Y", time.localtime(ts))
+
+
+def handle_admin_command(chat_id, user, text):
+    """Команды администратора: /grant, /revoke, /ban, /unban, /user.
+    Возвращает True, если сообщение было командой (и обработано)."""
+    parts = text.split()
+    if not parts:
+        return False
+    cmd = parts[0].lower()
+    if cmd not in ("/grant", "/revoke", "/ban", "/unban", "/user"):
+        return False
+    if not is_admin(user):
+        return True  # не админам команды не отвечаем
+    usage = ("Команды:\n"
+             "/grant ID ДНИ — выдать подписку на N дней\n"
+             "/revoke ID — снять подписку\n"
+             "/ban ID — заблокировать\n"
+             "/unban ID — разблокировать\n"
+             "/user ID — информация")
+    if len(parts) < 2 or not parts[1].isdigit():
+        send(chat_id, usage, None)
+        return True
+    target = int(parts[1])
+
+    if cmd == "/grant":
+        if len(parts) < 3 or not parts[2].isdigit() or not (1 <= int(parts[2]) <= 3650):
+            send(chat_id, "Укажите число дней от 1 до 3650: /grant ID ДНИ", None)
+            return True
+        days = int(parts[2])
+        u = db.extend_paid(target, days)
+        send(chat_id, f"Выдано {days} дн. пользователю {target}. Доступ до {fmt_date(u.get('paid_until'))}.", None)
+        call("sendMessage", {"chat_id": target, "text": f"🎁 Вам выдана подписка на {days} дн."})
+    elif cmd == "/revoke":
+        db.revoke_paid(target)
+        send(chat_id, f"Подписка пользователя {target} снята.", None)
+    elif cmd in ("/ban", "/unban"):
+        banned = cmd == "/ban"
+        db.set_banned(target, banned)
+        send(chat_id, f"Пользователь {target} {'заблокирован' if banned else 'разблокирован'}.", None)
+        if banned:
+            call("sendMessage", {"chat_id": target, "text": "Доступ к сервису ограничен администратором."})
+    else:  # /user
+        u = db.get_user(target) or {}
+        tickets = len(db.user_ticket_ids(target))
+        send(chat_id,
+             f"Пользователь {target}\n"
+             f"Подписка до: {fmt_date(u.get('paid_until'))}\n"
+             f"Пробный до: {fmt_date(u.get('trial_until'))}\n"
+             f"Заблокирован: {'да' if u.get('banned') else 'нет'}\n"
+             f"Обращений в поддержку: {tickets}", None)
+    return True
+
+
 def handle_message(message):
     chat_id = message["chat"]["id"]
     user = message.get("from", {})
     text = message.get("text", "").strip()
+
+    if handle_admin_command(chat_id, user, text):
+        return
+    if db.is_banned(user.get("id")) and not is_admin(user):
+        return  # заблокированные: сообщения не обрабатываем, ответа нет
 
     if text.startswith("/reply"):
         handle_reply(chat_id, user, text)
