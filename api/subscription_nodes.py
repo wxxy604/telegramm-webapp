@@ -10,9 +10,8 @@ import base64
 import binascii
 import random
 import time
+from urllib import request
 from urllib.parse import quote
-
-import requests
 
 SUBSCRIPTION_URL = "https://alvsub.cc"
 USER_AGENT = "Happ/1.0"
@@ -39,9 +38,10 @@ def fetch_links():
     now = time.time()
     if _cache["links"] and now - _cache["at"] < CACHE_TTL:
         return _cache["links"]
-    res = requests.get(SUBSCRIPTION_URL, headers={"User-Agent": USER_AGENT}, timeout=8)
-    res.raise_for_status()
-    links = parse_links(res.text)
+    req = request.Request(SUBSCRIPTION_URL, headers={"User-Agent": USER_AGENT})
+    with request.urlopen(req, timeout=8) as resp:
+        text = resp.read().decode("utf-8", errors="ignore")
+    links = parse_links(text)
     if not links:
         raise RuntimeError("В подписке не найдено ни одной строки vless://")
     _cache["at"] = now
