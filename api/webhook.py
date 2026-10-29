@@ -586,8 +586,11 @@ def handle_callback(cb):
     if db.is_banned(sender.get("id")) and not is_admin(sender):
         call("answerCallbackQuery", {"callback_query_id": cb["id"], "text": "Доступ ограничен", "show_alert": True})
         return
-    if (cb.get("data") or "").startswith("pg:"):
-        ok, msg, url = platega.create_payment(cb["from"]["id"], cb["data"].split(":", 1)[1])
+    # Оплата: pg:<тариф>. Листание документов тоже начинается с pg:, но это pg:<документ>:<страница> —
+    # такие callback'и пропускаем сюда и обрабатываем ниже (ветка name == "pg").
+    pg_arg = (cb.get("data") or "").split(":", 1)[1] if (cb.get("data") or "").startswith("pg:") else None
+    if pg_arg is not None and ":" not in pg_arg and pg_arg not in DOCS:
+        ok, msg, url = platega.create_payment(cb["from"]["id"], pg_arg)
         chat_id = cb["message"]["chat"]["id"]
         if ok:
             send(chat_id, msg, {"inline_keyboard": [[{"text": "Оплатить", "url": url}]]})
