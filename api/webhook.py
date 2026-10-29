@@ -13,7 +13,6 @@ import db  # noqa: E402
 import support  # noqa: E402
 import support_bot  # noqa: E402
 import platega  # noqa: E402
-import subscription_nodes  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
@@ -240,15 +239,40 @@ APPS = {
 SERVERS_PER_PAGE = 5
 
 
-def random_node_number():
-    """Случайный порядковый номер для бренд-имени сервера."""
-    return random.randint(1, 999)
+def get_user_vless_servers(user_id):
+    """3 стабильных для user_id ключа из подписки ALL VPN с брендовым именем.
+    Все импорты внутри функции: глобальный импорт не может уронить старт вебхука."""
+    import base64
+    import random
+    from urllib.parse import quote
 
+    try:
+        req = request.Request("https://alvsub.cc", headers={"User-Agent": "Happ/1.0"})
+        with request.urlopen(req, timeout=5) as resp:
+            body = resp.read().decode("utf-8", errors="ignore").strip()
+        compact = "".join(body.split())
+        decoded = base64.b64decode(compact + "=" * (-len(compact) % 4)).decode("utf-8")
+        all_links = [l.strip() for l in decoded.splitlines() if l.strip().startswith("vless://")]
+        if not all_links:
+            return []
 
-def rebrand_uri(uri, node_number):
-    """Меняет только имя (часть после первого '#'). Всё до '#' — как в оригинальной строке подписки."""
-    parts = uri.split("#", 1)
-    return parts[0] + "#" + quote("🔥 MyVPN | Premium Node " + str(node_number))
+        # Фиксированный выбор 3 ключей для user_id без базы данных; глобальный random не трогаем
+        rng = random.Random(int(user_id))
+        user_links = rng.sample(all_links, min(3, len(all_links)))
+
+        servers = []
+        for link in user_links:
+            node_num = rng.randint(1, 999)
+            name = "🔥 MyVPN | Premium Node " + str(node_num)
+            servers.append({
+                "name": name,
+                "ping": 0,
+                "uri": link.split("#", 1)[0] + "#" + quote(name),
+            })
+        return servers
+    except Exception as exc:
+        print("Error in server generation:", repr(exc))
+        return []
 
 
 def user_servers(user_id):
@@ -1087,12 +1111,7 @@ class handler(BaseHTTPRequestHandler):
         uid = request_user_id(self.path)
         servers = []
         if uid and has_access(db.get_user(uid) or {}):
-            # 3 стабильных для пользователя ключа из подписки ALL VPN (без БД)
-            try:
-                servers = subscription_nodes.get_user_nodes(uid)
-            except Exception as exc:  # подписка недоступна — мини приложение покажет пусто
-                print("subscription error:", repr(exc))
-                servers = []
+            servers = get_user_vless_servers(uid)
         body = json.dumps({"servers": servers, "access": bool(servers)}, ensure_ascii=False)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
