@@ -389,9 +389,9 @@ def assign_servers(user_id, count_min=3, count_max=5):
 
 
 def assign_random_pack(user_id, size=3):
-    """Сбалансированный пакет: size случайных разных серверов (по host:port) за пользователем.
-    Если у пользователя уже есть пакет — возвращает его без изменений (он не меняется при
-    каждом открытии мини приложения). Занятые другими пользователями сервера пропускаются.
+    """Персональный пакет: size случайных серверов из полного пула (каждая запись — отдельный сервер).
+    Пакет закрепляется за пользователем в user:<id>.server_ids и не меняется при повторных
+    открытиях мини приложения. Сервера, уже занятые другими, берутся в последнюю очередь.
     Возвращает список записей серверов из пула."""
     import random
 
@@ -403,44 +403,29 @@ def assign_random_pack(user_id, size=3):
     if len(current) == size:
         return [by_id[sid] for sid in current]
 
-    # Освобождаем то, что больше не в пуле
+    # Освобождаем сервера, которых больше нет в пуле
     for sid in user.get("server_ids", []):
         if sid not in by_id:
             _cmd("SREM", "servers:taken", sid)
 
-    # Уникальные host:port, не занятые другими пользователями
-    seen_hostport = {(s.get("host"), s.get("port")) for s in (by_id[sid] for sid in current)}
-    candidates = []
-    for s in pool:
-        if s.get("dropped_at"):
-            continue
-        hp = (s.get("host"), s.get("port"))
-        if hp in seen_hostport:
-            continue
-        candidates.append(s)
+    candidates = [s for s in pool if not s.get("dropped_at") and _sid(s) not in current]
     random.shuffle(candidates)
 
+    # Сначала свободные (не занятые другими пользователями), затем занятые — чтобы пакет был полным
+    free, busy = [], []
     for s in candidates:
+        if _cmd("SISMEMBER", "servers:taken", _sid(s)) == 1:
+            busy.append(s)
+        else:
+            free.append(s)
+
+    for s in free + busy:
         if len(current) >= size:
             break
         sid = _sid(s)
-        if sid in current:
-            continue
-        if _cmd("SADD", "servers:taken", sid) == 1:
+        if sid not in current:
+            _cmd("SADD", "servers:taken", sid)
             current.append(sid)
-            seen_hostport.add((s.get("host"), s.get("port")))
-
-    # Свободных не хватило (пул мал): добираем уже занятые другими, но не дублируем host:port
-    if len(current) < size:
-        for s in candidates:
-            if len(current) >= size:
-                break
-            sid = _sid(s)
-            hp = (s.get("host"), s.get("port"))
-            if sid in current or hp in seen_hostport:
-                continue
-            current.append(sid)
-            seen_hostport.add(hp)
 
     user["server_ids"] = current
     save_user(user_id, user)

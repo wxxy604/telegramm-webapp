@@ -13,7 +13,8 @@ import db  # noqa: E402
 import support  # noqa: E402
 import support_bot  # noqa: E402
 import platega  # noqa: E402
-import balanced_pack  # noqa: E402
+import random  # noqa: E402
+from urllib.parse import quote  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
@@ -238,6 +239,17 @@ APPS = {
 
 
 SERVERS_PER_PAGE = 5
+
+
+def random_node_number():
+    """Случайный порядковый номер для бренд-имени сервера."""
+    return random.randint(1, 999)
+
+
+def rebrand_uri(uri, new_name):
+    """Заменяет имя сервера (часть после #) в vless/trojan ссылке на брендовое, остальное не трогает."""
+    base, _, _ = uri.partition("#")
+    return f"{base}#{quote(new_name)}"
 
 
 def user_servers(user_id):
@@ -1076,13 +1088,12 @@ class handler(BaseHTTPRequestHandler):
         uid = request_user_id(self.path)
         servers = []
         if uid and has_access(db.get_user(uid) or {}):
-            # Сбалансированный пакет: 3 случайных уникальных сервера, закреплённые за пользователем
-            chosen = db.assign_random_pack(uid, size=balanced_pack.PACK_SIZE)
-            links = balanced_pack.pack_links(chosen)
-            servers = [
-                {"name": f"🔥 MyVPN | {balanced_pack.NODE_NAMES[i]}", "ping": s.get("ping", 0), "uri": links[i]}
-                for i, s in enumerate(chosen)
-            ]
+            # Персональный пакет: 3 случайных сервера из полного пула, закреплённые за пользователем
+            chosen = db.assign_random_pack(uid, size=3)
+            servers = []
+            for s in chosen:
+                brand = f"🔥 MyVPN | Premium Node {random_node_number()}"
+                servers.append({"name": brand, "ping": s.get("ping", 0), "uri": rebrand_uri(s["uri"], brand)})
         body = json.dumps({"servers": servers, "access": bool(servers)}, ensure_ascii=False)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
