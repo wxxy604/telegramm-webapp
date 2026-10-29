@@ -240,38 +240,61 @@ SERVERS_PER_PAGE = 5
 
 
 def get_user_vless_servers(user_id):
-    """3 стабильных для user_id ключа из подписки ALL VPN с брендовым именем.
-    Все импорты внутри функции: глобальный импорт не может уронить старт вебхука."""
+    import urllib.request
     import base64
     import random
     from urllib.parse import quote
-
+    
+    url = "https://alvsub.cc"
+    req = urllib.request.Request(url, headers={"User-Agent": "Happ/1.0"})
+    
     try:
-        req = request.Request("https://sub.alvsub.cc/X2g5hScH811VRdPR", headers={"User-Agent": "Happ/1.0"})
-        with request.urlopen(req, timeout=5) as resp:
-            body = resp.read().decode("utf-8", errors="ignore").strip()
-        compact = "".join(body.split())
-        decoded = base64.b64decode(compact + "=" * (-len(compact) % 4)).decode("utf-8")
-        all_links = [l.strip() for l in decoded.splitlines() if l.strip().startswith("vless://")]
-        if not all_links:
-            return []
-
-        # Фиксированный выбор 3 ключей для user_id без базы данных; глобальный random не трогаем
-        rng = random.Random(int(user_id))
-        user_links = rng.sample(all_links, min(3, len(all_links)))
-
-        servers = []
-        for link in user_links:
-            node_num = rng.randint(1, 999)
-            name = "🔥 MyVPN | Premium Node " + str(node_num)
-            servers.append({
-                "name": name,
-                "ping": 0,
-                "uri": link.split("#", 1)[0] + "#" + quote(name),
-            })
-        return servers
-    except Exception as exc:
-        print("Error in server generation:", repr(exc))
+        with urllib.request.urlopen(req, timeout=8) as response:
+            if response.status != 200:
+                print(f"ALL VPN API error: status {response.status}")
+                return []
+            
+            # Читаем байты и переводим в чистую ASCII строку, убирая пробелы и переносы
+            raw_bytes = response.read()
+            raw_text = raw_bytes.decode('utf-8', errors='ignore').strip()
+            clean_b64 = "".join(raw_text.split())
+            
+            # Безопасное декодирование Base64 с автодобавлением паддинга, если нужно
+            missing_padding = len(clean_b64) % 4
+            if missing_padding:
+                clean_b64 += "=" * (4 - missing_padding)
+                
+            decoded_bytes = base64.b64decode(clean_b64.encode('ascii'))
+            decoded_text = decoded_bytes.decode('utf-8', errors='ignore')
+            
+            # Получаем массив оригинальных строк
+            all_links = [line.strip() for line in decoded_text.splitlines() if line.strip() and line.startswith("vless://")]
+            
+            if not all_links:
+                print("No vless links found in decoded payload")
+                return []
+            
+            # Закрепляем 3 случайных сервера за конкретным пользователем
+            alt_random = random.Random(int(user_id))
+            user_links = alt_random.sample(all_links, min(3, len(all_links)))
+            
+            # Хирургический ребрендинг только хвоста ссылки после знака #
+            rebranded_links = []
+            for link in user_links:
+                if '#' in link:
+                    before_hash, _ = link.split('#', 1)
+                else:
+                    before_hash = link
+                
+                # Генерируем красивый случайный номер ноды
+                node_num = alt_random.randint(1, 999)
+                new_name = quote(f"🔥 MyVPN | Premium Node {node_num}")
+                rebranded_links.append(f"{before_hash}#{new_name}")
+                
+            return rebranded_links
+            
+    except Exception as e:
+        print(f"Error inside get_user_vless_servers: {e}")
         return []
 
 
