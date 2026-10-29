@@ -56,8 +56,10 @@ def create_payment(user_id, plan):
     })
     url = data.get("redirect") if status == 200 else None
     if not url:
-        print("platega create error:", status, data)
-        return False, "Не удалось создать платёж. Попробуйте позже.", None
+        # В логах Vercel будет точный ответ Platega (код и тело), по нему правится формат запроса
+        print("platega create error:", status, json.dumps(data, ensure_ascii=False)[:500])
+        reason = str(data.get("message") or data.get("error") or data)[:160]
+        return False, f"Не удалось создать платёж ({status}). {reason}", None
     return True, f"Оплата тарифа «{title}» — {rub} ₽. После оплаты подписка включится автоматически.", url
 
 
