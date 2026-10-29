@@ -13,6 +13,7 @@ import db  # noqa: E402
 import support  # noqa: E402
 import support_bot  # noqa: E402
 import platega  # noqa: E402
+import balanced_pack  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
@@ -1075,9 +1076,12 @@ class handler(BaseHTTPRequestHandler):
         uid = request_user_id(self.path)
         servers = []
         if uid and has_access(db.get_user(uid) or {}):
+            # Сбалансированный пакет: 3 случайных уникальных сервера, закреплённые за пользователем
+            chosen = db.assign_random_pack(uid, size=balanced_pack.PACK_SIZE)
+            links = balanced_pack.pack_links(chosen)
             servers = [
-                {"name": s["name"], "ping": s["ping"], "uri": s["uri"]}
-                for s in user_servers(uid)
+                {"name": f"🔥 MyVPN | {balanced_pack.NODE_NAMES[i]}", "ping": s.get("ping", 0), "uri": links[i]}
+                for i, s in enumerate(chosen)
             ]
         body = json.dumps({"servers": servers, "access": bool(servers)}, ensure_ascii=False)
         self.send_response(200)

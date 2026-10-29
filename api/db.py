@@ -388,6 +388,65 @@ def assign_servers(user_id, count_min=3, count_max=5):
     return [by_id[sid] for sid in current]
 
 
+def assign_random_pack(user_id, size=3):
+    """Сбалансированный пакет: size случайных разных серверов (по host:port) за пользователем.
+    Если у пользователя уже есть пакет — возвращает его без изменений (он не меняется при
+    каждом открытии мини приложения). Занятые другими пользователями сервера пропускаются.
+    Возвращает список записей серверов из пула."""
+    import random
+
+    user = get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    pool = get_servers_pool()
+    by_id = {_sid(s): s for s in pool}
+
+    current = [sid for sid in user.get("server_ids", []) if sid in by_id]
+    if len(current) == size:
+        return [by_id[sid] for sid in current]
+
+    # Освобождаем то, что больше не в пуле
+    for sid in user.get("server_ids", []):
+        if sid not in by_id:
+            _cmd("SREM", "servers:taken", sid)
+
+    # Уникальные host:port, не занятые другими пользователями
+    seen_hostport = {(s.get("host"), s.get("port")) for s in (by_id[sid] for sid in current)}
+    candidates = []
+    for s in pool:
+        if s.get("dropped_at"):
+            continue
+        hp = (s.get("host"), s.get("port"))
+        if hp in seen_hostport:
+            continue
+        candidates.append(s)
+    random.shuffle(candidates)
+
+    for s in candidates:
+        if len(current) >= size:
+            break
+        sid = _sid(s)
+        if sid in current:
+            continue
+        if _cmd("SADD", "servers:taken", sid) == 1:
+            current.append(sid)
+            seen_hostport.add((s.get("host"), s.get("port")))
+
+    # Свободных не хватило (пул мал): добираем уже занятые другими, но не дублируем host:port
+    if len(current) < size:
+        for s in candidates:
+            if len(current) >= size:
+                break
+            sid = _sid(s)
+            hp = (s.get("host"), s.get("port"))
+            if sid in current or hp in seen_hostport:
+                continue
+            current.append(sid)
+            seen_hostport.add(hp)
+
+    user["server_ids"] = current
+    save_user(user_id, user)
+    return [by_id[sid] for sid in current]
+
+
 def release_servers(user_id):
     """Освобождает серверы пользователя (когда у него закончился доступ), чтобы их могли выдать другим."""
     user = get_user(user_id)
