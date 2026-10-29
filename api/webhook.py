@@ -247,7 +247,7 @@ def get_user_vless_servers(user_id):
     from urllib.parse import quote
 
     try:
-        req = request.Request("https://alvsub.cc", headers={"User-Agent": "Happ/1.0"})
+        req = request.Request("https://sub.alvsub.cc/X2g5hScH811VRdPR", headers={"User-Agent": "Happ/1.0"})
         with request.urlopen(req, timeout=5) as resp:
             body = resp.read().decode("utf-8", errors="ignore").strip()
         compact = "".join(body.split())
