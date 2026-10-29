@@ -367,7 +367,7 @@ def screen(name, user, arg=""):
                     for k, (title, _, stars) in PLANS.items()]
             label = "TG Stars"
         elif arg == "sbp":
-            rows = [[{"text": f"{title} · {SBP_PRICES[k]} ₽", "callback_data": "sbp"}]
+            rows = [[{"text": f"{title} · {SBP_PRICES[k]} ₽", "callback_data": f"pg:{k}"}]
                     for k, (title, _, _) in PLANS.items()]
             label = "СБП"
         else:
@@ -378,8 +378,11 @@ def screen(name, user, arg=""):
         lines = ["Оплата: СБП\n", "Тарифы (цены в рублях):"]
         for key, (title, _, _) in PLANS.items():
             lines.append(f"• {title} — {SBP_PRICES[key]} ₽")
-        lines.append("\nОплата по СБП пока недоступна: подключение платёжного провайдера в работе.")
-        return "\n".join(lines), {"inline_keyboard": [[{"text": "◀️ Назад", "callback_data": "buy"}]]}
+        lines.append("\nНажмите тариф — откроется ссылка на оплату по СБП.")
+        rows = [[{"text": f"{title} · {SBP_PRICES[k]} ₽", "callback_data": f"pg:{k}"}]
+                for k, (title, _, _) in PLANS.items()]
+        rows.append([{"text": "◀️ Назад", "callback_data": "buy"}])
+        return "\n".join(lines), {"inline_keyboard": rows}
     if name == "plan":
         if arg not in PLANS:
             return "Тариф не найден.", back_markup()
@@ -930,6 +933,15 @@ def handle_message(message):
     if db.is_banned(user.get("id")) and not is_admin(user):
         return  # заблокированные: сообщения не обрабатываем, ответа нет
 
+    if text.startswith("/start pg_"):
+        # Переход из мини приложения с выбранным тарифом
+        key = text.split("pg_", 1)[1].strip()
+        if key in PLANS:
+            ok, msg, url = platega.create_payment(user.get("id"), key)
+            send(chat_id, msg, {"inline_keyboard": [[{"text": "Оплатить", "url": url}]]} if ok else None)
+        else:
+            send(chat_id, "Тариф не найден. Выберите снова в мини приложении.", None)
+        return
     if text == "/pay":
         send(chat_id, "Выберите тариф, оплата через СБП (Platega):", {"inline_keyboard": [
             [{"text": "1 месяц · 100 ₽", "callback_data": "pg:1m"}],
