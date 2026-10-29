@@ -277,7 +277,9 @@ def get_user_vless_servers(user_id):
 
     all_links = [line.strip() for line in text.splitlines() if line.strip().startswith("vless://")]
     if not all_links:
-        print("No vless links found in subscription payload")
+        # Диагностика: что реально пришло (длина и начало сырого ответа и декодированного текста)
+        print(f"No vless links. raw_len={len(raw_text)} raw_head={raw_text[:200]!r}")
+        print(f"No vless links. decoded_len={len(text)} decoded_head={text[:200]!r}")
         return []
 
     try:
