@@ -71,9 +71,7 @@ function renderPayment() {
     if (payBtn) {
         const dict = I18N_FULL[lang];
         const lbl = dict.pay_btn;
-        payBtn.textContent = payMethod === "sbp"
-            ? dict.sbp_soon
-            : lbl + " · " + PRICES[payMethod][selectedPlan];
+        payBtn.textContent = lbl + " · " + PRICES[payMethod][selectedPlan];
     }
 }
 
@@ -112,7 +110,8 @@ function openBot(link) {
 
 $("pay-btn").addEventListener("click", () => {
     if (payMethod === "sbp") {
-        toast("СБП пока недоступен");
+        // СБП через Platega: бот создаёт платёж для выбранного тарифа и присылает ссылку на оплату
+        openBot(BOT + "?start=pg_" + selectedPlan);
         return;
     }
     const prefix = payMethod === "crypto" ? "cbuy_" : "buy_";
