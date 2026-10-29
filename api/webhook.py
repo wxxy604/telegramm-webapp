@@ -13,8 +13,7 @@ import db  # noqa: E402
 import support  # noqa: E402
 import support_bot  # noqa: E402
 import platega  # noqa: E402
-import random  # noqa: E402
-from urllib.parse import quote  # noqa: E402
+import subscription_nodes  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
@@ -246,10 +245,10 @@ def random_node_number():
     return random.randint(1, 999)
 
 
-def rebrand_uri(uri, new_name):
-    """Заменяет имя сервера (часть после #) в vless/trojan ссылке на брендовое, остальное не трогает."""
-    base, _, _ = uri.partition("#")
-    return f"{base}#{quote(new_name)}"
+def rebrand_uri(uri, node_number):
+    """Меняет только имя (часть после первого '#'). Всё до '#' — как в оригинальной строке подписки."""
+    parts = uri.split("#", 1)
+    return parts[0] + "#" + quote("🔥 MyVPN | Premium Node " + str(node_number))
 
 
 def user_servers(user_id):
@@ -1088,12 +1087,12 @@ class handler(BaseHTTPRequestHandler):
         uid = request_user_id(self.path)
         servers = []
         if uid and has_access(db.get_user(uid) or {}):
-            # Персональный пакет: 3 случайных сервера из полного пула, закреплённые за пользователем
-            chosen = db.assign_random_pack(uid, size=3)
-            servers = []
-            for s in chosen:
-                brand = f"🔥 MyVPN | Premium Node {random_node_number()}"
-                servers.append({"name": brand, "ping": s.get("ping", 0), "uri": rebrand_uri(s["uri"], brand)})
+            # 3 стабильных для пользователя ключа из подписки ALL VPN (без БД)
+            try:
+                servers = subscription_nodes.get_user_nodes(uid)
+            except Exception as exc:  # подписка недоступна — мини приложение покажет пусто
+                print("subscription error:", repr(exc))
+                servers = []
         body = json.dumps({"servers": servers, "access": bool(servers)}, ensure_ascii=False)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
