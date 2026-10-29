@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db  # noqa: E402
 import support  # noqa: E402
 import support_bot  # noqa: E402
+import platega  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
@@ -582,6 +583,14 @@ def handle_callback(cb):
     if db.is_banned(sender.get("id")) and not is_admin(sender):
         call("answerCallbackQuery", {"callback_query_id": cb["id"], "text": "Доступ ограничен", "show_alert": True})
         return
+    if (cb.get("data") or "").startswith("pg:"):
+        ok, msg, url = platega.create_payment(cb["from"]["id"], cb["data"].split(":", 1)[1])
+        chat_id = cb["message"]["chat"]["id"]
+        if ok:
+            send(chat_id, msg, {"inline_keyboard": [[{"text": "Оплатить", "url": url}]]})
+        else:
+            send(chat_id, msg, None)
+        return
     if cb.get("data") == "ticket":
         # Всплывающее уведомление поверх чата: подсказка, что делать дальше
         call("answerCallbackQuery", {
@@ -921,6 +930,13 @@ def handle_message(message):
     if db.is_banned(user.get("id")) and not is_admin(user):
         return  # заблокированные: сообщения не обрабатываем, ответа нет
 
+    if text == "/pay":
+        send(chat_id, "Выберите тариф, оплата через СБП (Platega):", {"inline_keyboard": [
+            [{"text": "1 месяц · 100 ₽", "callback_data": "pg:1m"}],
+            [{"text": "3 месяца · 250 ₽", "callback_data": "pg:3m"}],
+            [{"text": "12 месяцев · 900 ₽", "callback_data": "pg:12m"}],
+        ]})
+        return
     if text.startswith("/reply"):
         handle_reply(chat_id, user, text)
         return
@@ -1075,6 +1091,14 @@ class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
+        # Callback Platega: адрес https://telegramm-webapp.vercel.app/api/webhook?platega=1
+        if "platega=" in self.path:
+            code, msg = platega.handle_callback(
+                self.headers, self.rfile.read(length),
+                lambda uid, text: call("sendMessage", {"chat_id": uid, "text": text}),
+            )
+            self._reply(code, msg)
+            return
         # Сообщения из чата мини приложения (проверяются по подписи initData, без секрета вебхука)
         if self.path.startswith("/api/webhook?support") or "support=" in self.path:
             try:
