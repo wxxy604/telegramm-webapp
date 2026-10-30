@@ -270,7 +270,10 @@ body[data-theme="light"] .topbar { background: rgba(255, 255, 255, 0.55); }
     transition: grid-template-rows 0.35s ease, opacity 0.3s ease;
 }
 .servers-box.open .servers-body { grid-template-rows: 1fr; opacity: 1; }
-.servers-body > .group { min-height: 0; overflow: hidden; margin-top: 8px; }
+.servers-inner { min-height: 0; overflow: hidden; }
+.servers-refresh { margin-top: 8px; }
+.servers-refresh:disabled { opacity: 0.5; pointer-events: none; }
+.servers-body > .servers-inner > .group { margin-top: 8px; }
 .server-row { cursor: pointer; }
 .server-ping { font-size: 13px; font-weight: 700; color: var(--accent); white-space: nowrap; }
 

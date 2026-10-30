@@ -436,6 +436,7 @@ async function loadServers() {
         servers = data.servers || [];
         serversAccess = !!data.access;
         serversError = false;
+        applyRefreshState(data.refresh_left || 0);
     } catch (e) {
         serversError = true;
     } finally {
@@ -450,6 +451,32 @@ $("servers-toggle").addEventListener("click", () => {
 });
 
 // Обновление набора серверов по кнопке (сервер ограничивает: не чаще раза в 3 часа)
+// Кнопка неактивна, пока не прошло 3 часа с последнего обновления. Срок приходит с сервера (refresh_left, сек).
+let refreshDeadline = 0;
+let refreshTimer = null;
+
+function applyRefreshState(leftSec) {
+    const btn = $("servers-refresh");
+    clearTimeout(refreshTimer);
+    refreshDeadline = leftSec > 0 ? Date.now() + leftSec * 1000 : 0;
+    if (!refreshDeadline) {
+        btn.disabled = false;
+        btn.textContent = "Обновить серверы";
+        return;
+    }
+    const tick = () => {
+        const left = Math.ceil((refreshDeadline - Date.now()) / 1000);
+        if (left <= 0) {
+            applyRefreshState(0);
+            return;
+        }
+        btn.disabled = true;
+        btn.textContent = `Обновить через ${Math.floor(left / 3600)} ч ${Math.floor((left % 3600) / 60)} мин`;
+        refreshTimer = setTimeout(tick, 30000);
+    };
+    tick();
+}
+
 async function refreshServers() {
     if (!user || !tg || !tg.initData) return;
     const btn = $("servers-refresh");
@@ -462,7 +489,6 @@ async function refreshServers() {
     } catch (e) {
         toast("Не удалось обновить серверы");
     }
-    btn.disabled = false;
     await loadServers();
 }
 
