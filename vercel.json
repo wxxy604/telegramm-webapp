@@ -1,7 +1,13 @@
 {
   "functions": {
     "api/webhook.py": {
-      "maxDuration": 10
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/webhook?remind=1",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }
