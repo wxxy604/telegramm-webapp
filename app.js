@@ -449,6 +449,25 @@ $("servers-toggle").addEventListener("click", () => {
     haptic();
 });
 
+// Обновление набора серверов по кнопке (сервер ограничивает: не чаще раза в 3 часа)
+async function refreshServers() {
+    if (!user || !tg || !tg.initData) return;
+    const btn = $("servers-refresh");
+    btn.disabled = true;
+    try {
+        const r = await fetch(`${SERVERS_API}&refresh=1&init=${encodeURIComponent(tg.initData)}`, { cache: "no-store" });
+        const data = await r.json();
+        toast(data.error || "Серверы обновлены");
+        haptic();
+    } catch (e) {
+        toast("Не удалось обновить серверы");
+    }
+    btn.disabled = false;
+    await loadServers();
+}
+
+$("servers-refresh").addEventListener("click", refreshServers);
+
 function openSheet(index) {
     currentServer = servers[index];
     if (!currentServer) return;
