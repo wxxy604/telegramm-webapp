@@ -269,6 +269,8 @@ def get_user_vless_servers(user_id):
             print("servers:pool is empty or has no vless uri")
             return []
 
+        if not keys_active(user_id):
+            return []  # срок ключей истёк: сервера не выдаём, пока не будет новой оплаты или пробного периода
         # Набор 3 ключей закреплён за user_id и номером обновления (servers_seed): между обновлениями не меняется
         user = db.get_user(user_id) or {}
         rng = random.Random(f"{int(user_id)}:{int(user.get('servers_seed', 0))}")
@@ -291,7 +293,26 @@ def get_user_vless_servers(user_id):
         return []
 
 
+KEY_TTL = 30 * 86400  # сек: ключи действуют 30 дней с последней оплаты или пробного периода
 REFRESH_COOLDOWN = 3 * 3600  # сек: обновлять серверы можно не чаще раза в 3 часа
+
+
+def keys_active(user_id):
+    """Ключи пользователя действуют: есть доступ (подписка/пробный период) и не прошло KEY_TTL с выдачи.
+    Пользователям, у которых ещё нет даты выдачи ключей, она проставляется при первом обращении."""
+    user = db.get_user(user_id) or {}
+    if not has_access(user):
+        return False
+    now = int(time.time())
+    if "keys_issued_at" not in user:
+        # Старые пользователи: дата реальной оплаты раньше не сохранялась.
+        # Оценка: конец подписки минус KEY_TTL (для тарифа 1 мес это совпадает с датой оплаты).
+        if user.get("paid_until"):
+            user["keys_issued_at"] = max(int(user["paid_until"]) - KEY_TTL, 0)
+        else:
+            user["keys_issued_at"] = now
+        db.save_user(user_id, user)
+    return now - int(user["keys_issued_at"]) < KEY_TTL
 
 
 def refresh_servers(user_id):
@@ -311,6 +332,9 @@ def refresh_servers(user_id):
 
 def user_servers(user_id):
     """Персональный список серверов пользователя: 3–5 лучших по пингу, без повторов у других."""
+    if not keys_active(user_id):
+        db.release_servers(user_id)  # срок истёк: освобождаем сервера для других
+        return []
     return db.assign_servers(user_id, count_min=3, count_max=5)
 
 
@@ -1149,7 +1173,12 @@ class handler(BaseHTTPRequestHandler):
             if "refresh=" in self.path:
                 error = refresh_servers(uid)
             servers = get_user_vless_servers(uid)
-        body = json.dumps({"servers": servers, "access": bool(servers), "error": error}, ensure_ascii=False)
+        left = 0
+        if uid:
+            u = db.get_user(uid) or {}
+            left = max(0, REFRESH_COOLDOWN - (int(time.time()) - int(u.get("servers_refreshed_at", 0))))
+        body = json.dumps({"servers": servers, "access": bool(servers), "error": error,
+                           "refresh_left": left}, ensure_ascii=False)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")

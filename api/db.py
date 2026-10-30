@@ -57,6 +57,7 @@ def add_trial_days(user_id, days):
     now = int(time.time())
     base = max(user.get("trial_until", 0), now)
     user["trial_until"] = base + days * 86400
+    user["keys_issued_at"] = now  # новый срок действия ключей (KEY_TTL в webhook.py)
     save_user(user_id, user)
     return user
 
@@ -69,6 +70,7 @@ def extend_paid(user_id, days):
     now = int(time.time())
     base = max(user.get("paid_until", 0), now)
     user["paid_until"] = base + days * 86400
+    user["keys_issued_at"] = now  # оплата даёт новый срок действия ключей (KEY_TTL в webhook.py)
     save_user(user_id, user)
     return user
 
