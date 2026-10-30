@@ -269,8 +269,9 @@ def get_user_vless_servers(user_id):
             print("servers:pool is empty or has no vless uri")
             return []
 
-        # Закрепляем 3 ключа за user_id: одинаковый результат при каждом запросе, глобальный random не трогаем
-        rng = random.Random(int(user_id))
+        # Набор 3 ключей закреплён за user_id и номером обновления (servers_seed): между обновлениями не меняется
+        user = db.get_user(user_id) or {}
+        rng = random.Random(f"{int(user_id)}:{int(user.get('servers_seed', 0))}")
         user_links = rng.sample(all_links, min(3, len(all_links)))
 
         servers = []
@@ -288,6 +289,24 @@ def get_user_vless_servers(user_id):
     except Exception as e:
         print(f"Error in get_user_vless_servers: {e!r}")
         return []
+
+
+REFRESH_COOLDOWN = 3 * 3600  # сек: обновлять серверы можно не чаще раза в 3 часа
+
+
+def refresh_servers(user_id):
+    """Обновляет персональный набор серверов по кнопке в мини приложении.
+    Возвращает None при успехе или текст ошибки, если ещё не прошло REFRESH_COOLDOWN."""
+    user = db.get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    now = int(time.time())
+    last = int(user.get("servers_refreshed_at", 0))
+    if now - last < REFRESH_COOLDOWN:
+        left = REFRESH_COOLDOWN - (now - last)
+        return f"Обновить серверы можно через {left // 3600} ч {(left % 3600) // 60} мин."
+    user["servers_seed"] = int(user.get("servers_seed", 0)) + 1
+    user["servers_refreshed_at"] = now
+    db.save_user(user_id, user)
+    return None
 
 
 def user_servers(user_id):
@@ -1125,9 +1144,12 @@ class handler(BaseHTTPRequestHandler):
         """Персональный список серверов пользователя для мини приложения. Без доступа — пусто."""
         uid = request_user_id(self.path)
         servers = []
+        error = None
         if uid and has_access(db.get_user(uid) or {}):
+            if "refresh=" in self.path:
+                error = refresh_servers(uid)
             servers = get_user_vless_servers(uid)
-        body = json.dumps({"servers": servers, "access": bool(servers)}, ensure_ascii=False)
+        body = json.dumps({"servers": servers, "access": bool(servers), "error": error}, ensure_ascii=False)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
