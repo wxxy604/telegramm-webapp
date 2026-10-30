@@ -240,63 +240,35 @@ SERVERS_PER_PAGE = 5
 
 
 def get_user_vless_servers(user_id):
-    import urllib.request
-    import base64
     import random
-    import time
     from urllib.parse import quote
 
-    # Основной адрес и запасной (полный адрес подписки из клиента)
-    urls = ["https://alvsub.cc", "https://sub.alvsub.cc/X2g5hScH811VRdPR"]
-    raw_text = None
-    for url in urls:
-        for attempt in range(2):
-            try:
-                req = urllib.request.Request(url, headers={"User-Agent": "Happ/1.0"})
-                with urllib.request.urlopen(req, timeout=8) as response:
-                    if response.status == 200:
-                        raw_text = response.read().decode("utf-8", errors="ignore").strip()
-                        break
-                    print(f"ALL VPN API error {url}: status {response.status}")
-            except Exception as e:
-                print(f"ALL VPN fetch error {url} try {attempt + 1}: {e}")
-                time.sleep(1)
-        if raw_text:
-            break
-    if not raw_text:
-        return []
-
-    # Подписка — Base64. Если декодирование не удалось, берём строки ответа как есть
-    text = raw_text
     try:
-        clean_b64 = "".join(raw_text.split())
-        clean_b64 += "=" * (-len(clean_b64) % 4)
-        text = base64.b64decode(clean_b64, validate=True).decode("utf-8", errors="ignore")
-    except (ValueError, UnicodeDecodeError) as e:
-        print(f"Subscription is not base64, using raw text: {e}")
+        # Пул ключей, который загружен в Upstash (ключ servers:pool), читаем через уже существующий db.py
+        pool = db.get_servers_pool()
+        all_links = [s["uri"] for s in pool if isinstance(s, dict) and str(s.get("uri", "")).startswith("vless://")]
+        if not all_links:
+            print("servers:pool is empty or has no vless uri")
+            return []
 
-    all_links = [line.strip() for line in text.splitlines() if line.strip().startswith("vless://")]
-    if not all_links:
-        # Диагностика: что реально пришло (длина и начало сырого ответа и декодированного текста)
-        print(f"No vless links. raw_len={len(raw_text)} raw_head={raw_text[:200]!r}")
-        print(f"No vless links. decoded_len={len(text)} decoded_head={text[:200]!r}")
-        return []
+        # Закрепляем 3 ключа за user_id: одинаковый результат при каждом запросе, глобальный random не трогаем
+        rng = random.Random(int(user_id))
+        user_links = rng.sample(all_links, min(3, len(all_links)))
 
-    try:
-        # Закрепляем 3 случайных сервера за конкретным пользователем
-        alt_random = random.Random(int(user_id))
-        user_links = alt_random.sample(all_links, min(3, len(all_links)))
-
-        # Ребрендинг только хвоста ссылки после первого знака #
-        rebranded_links = []
+        servers = []
         for link in user_links:
+            # Тело ссылки до первого '#' не меняем; меняем только имя после него
             before_hash = link.split("#", 1)[0]
-            node_num = alt_random.randint(1, 999)
-            new_name = quote(f"🔥 MyVPN | Premium Node {node_num}")
-            rebranded_links.append(f"{before_hash}#{new_name}")
-        return rebranded_links
+            node_num = rng.randint(1, 999)
+            name = f"🔥 MyVPN | Premium Node {node_num}"
+            servers.append({
+                "name": name,
+                "ping": 0,
+                "uri": f"{before_hash}#{quote(name)}",
+            })
+        return servers
     except Exception as e:
-        print(f"Error building servers: {e}")
+        print(f"Error in get_user_vless_servers: {e!r}")
         return []
 
 
