@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 from http.server import BaseHTTPRequestHandler
@@ -13,10 +14,14 @@ import db  # noqa: E402
 import support  # noqa: E402
 import support_bot  # noqa: E402
 import platega  # noqa: E402
+from docs_privacy import PRIVACY  # noqa: E402
+from docs_terms import TERMS  # noqa: E402
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+CRON_SECRET = os.getenv("CRON_SECRET", "")  # секрет для Vercel Cron (эндпоинт ?remind=1)
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")  # куда приходят обращения в поддержку
 
 BTN_PROFILE = "Профиль"
 BTN_SUBSCRIPTION = "Подписка"
@@ -29,11 +34,22 @@ PLANS = {
     "12m": ("12 месяцев", 365, 1400),
 }
 
-_bot_username = None
-
 CRYPTO_TOKEN = os.getenv("CRYPTO_PAY_TOKEN", "")
 CRYPTO_PRICES = {"1m": 2, "3m": 5, "12m": 18}  # цены в USDT
 SBP_PRICES = {"1m": 100, "3m": 250, "12m": 900}  # цены в рублях по СБП
+
+KEY_TTL = 30 * 86400  # сек: ключи действуют 30 дней с оплаты или пробного периода
+REFRESH_COOLDOWN = 3 * 3600  # сек: серверы можно обновить не чаще раза в 3 часа
+DAY = 86400
+SERVERS_PER_PAGE = 5
+INIT_DATA_MAX_AGE = 24 * 3600  # секунд, после этого initData считается устаревшим
+
+DOCS = {
+    "terms": ("Пользовательское соглашение", TERMS),
+    "privacy": ("Политика конфиденциальности", PRIVACY),
+}
+
+_bot_username = None
 
 
 def _clean_payload(payload):
@@ -77,16 +93,8 @@ def reply_keyboard():
     return {"keyboard": rows, "resize_keyboard": True, "is_persistent": True}
 
 
-from docs_privacy import PRIVACY  # noqa: E402
-from docs_terms import TERMS  # noqa: E402
-
-DOCS = {"terms": ("Пользовательское соглашение", TERMS), "privacy": ("Политика конфиденциальности", PRIVACY)}
-
-
 def split_sections(text):
-    """Режет документ по разделам: каждый пункт вида '1. Общие положения' — отдельная часть.
-    Текст не меняется, только делится по границам разделов."""
-    import re
+    """Режет документ по разделам: каждый пункт вида '1. Общие положения' — отдельная часть."""
     lines = text.split("\n")
     starts = [i for i, line in enumerate(lines) if re.match(r"^\d+\. ", line)]
     if not starts:
@@ -96,25 +104,6 @@ def split_sections(text):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(lines)
         parts.append("\n".join(lines[start:end]).strip())
     return [p for p in parts if p]
-
-
-def send_long(chat_id, text, markup=None):
-    """Отправляет документ по разделам, с номером части. Каждый раздел — отдельным сообщением.
-    Если раздел длиннее лимита Telegram (4096 символов), режется по абзацам."""
-    limit = 3900
-    chunks = []
-    for section in split_sections(text):
-        while len(section) > limit:
-            cut = section.rfind("\n", 0, limit)
-            if cut <= 0:
-                cut = limit
-            chunks.append(section[:cut].strip())
-            section = section[cut:].strip()
-        chunks.append(section)
-    total = len(chunks)
-    for i, chunk in enumerate(chunks, 1):
-        label = f"({i}/{total})\n\n" if total > 1 else ""
-        send(chat_id, label + chunk, markup if i == total else None)
 
 
 def group_pages(text, limit=3500):
@@ -135,11 +124,11 @@ def group_pages(text, limit=3500):
 def page_markup(key, page, total):
     row = []
     if page > 1:
-        row.append({"text": "◀️ Назад", "callback_data": f"pg:{key}:{page - 1}"})
+        row.append({"text": "Назад", "callback_data": f"pg:{key}:{page - 1}"})
     row.append({"text": f"{page} / {total}", "callback_data": "noop"})
     if page < total:
-        row.append({"text": "Вперёд ▶️", "callback_data": f"pg:{key}:{page + 1}"})
-    return {"inline_keyboard": [row, [{"text": "📄 К документам", "callback_data": "docs"}]]}
+        row.append({"text": "Вперёд", "callback_data": f"pg:{key}:{page + 1}"})
+    return {"inline_keyboard": [row, [{"text": "К документам", "callback_data": "docs"}]]}
 
 
 def show_doc_page(chat_id, message_id, key, page):
@@ -153,9 +142,9 @@ def show_doc_page(chat_id, message_id, key, page):
 
 def docs_markup():
     return {"inline_keyboard": [
-        [{"text": "📜 Пользовательское соглашение", "callback_data": "doc:terms"}],
-        [{"text": "🔒 Политика конфиденциальности", "callback_data": "doc:privacy"}],
-        [{"text": "◀️ Назад в меню", "callback_data": "menu"}],
+        [{"text": "Пользовательское соглашение", "callback_data": "doc:terms"}],
+        [{"text": "Политика конфиденциальности", "callback_data": "doc:privacy"}],
+        [{"text": "Назад в меню", "callback_data": "menu"}],
     ]}
 
 
@@ -168,19 +157,11 @@ def html_escape(text):
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-WELCOME_TEXT = (
-    "Добро пожаловать в SupplineVPN!\n\n"
-    "Здесь вы оформляете доступ, получаете ключи и управляете подпиской. "
-    "Выберите раздел ниже."
-)
-
-
 def menu_markup():
     rows = [
-        [{"text": "Купить", "callback_data": "buy", "style": "success"}],
-        [{"text": "Серверы", "callback_data": "keys"}, {"text": "Реф. система", "callback_data": "referral"}],
-        [{"text": "Поддержка", "callback_data": "support"}],
-        [{"text": "Документы", "callback_data": "docs"}],
+        [{"text": "Купить подписку", "callback_data": "buy", "style": "success"}],
+        [{"text": "Серверы", "callback_data": "keys"}, {"text": "Рефералы", "callback_data": "referral"}],
+        [{"text": "Поддержка", "callback_data": "support"}, {"text": "Документы", "callback_data": "docs"}],
     ]
     if WEBAPP_URL:
         rows.append([{"text": "Открыть приложение", "web_app": {"url": WEBAPP_URL}}])
@@ -189,26 +170,24 @@ def menu_markup():
 
 def support_markup():
     return {"inline_keyboard": [
-        [{"text": "✍️ Написать в поддержку", "callback_data": "ticket"}],
+        [{"text": "Написать обращение", "callback_data": "ticket"}],
         [{"text": "FAQ", "callback_data": "help"}, {"text": "О сервисе", "callback_data": "about"}],
-        [{"text": "Функции", "callback_data": "features"}, {"text": "Документы", "callback_data": "docs"}],
+        [{"text": "Возможности", "callback_data": "features"}, {"text": "Документы", "callback_data": "docs"}],
         [{"text": "Назад в меню", "callback_data": "menu"}],
     ]}
 
 
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")  # куда приходят обращения в поддержку (в .env)
-
-
 def welcome_text(user, record):
-    """Приветствие: преимущества VPN и статус подписки сразу, без лишних нажатий."""
+    """Приветствие главного экрана: статус подписки и пробного периода."""
     first = html_escape(user.get("first_name", ""))
     return (
-        f"<b>Привет, {first}! Добро пожаловать в SupplineVPN</b>\n\n"
-        "<blockquote>SupplineVPN обеспечивает стабильное подключение, защиту трафика в публичных сетях "
-        "и работу на 3 устройствах одной подпиской.</blockquote>\n\n"
-        "\u00a0\n\n"
-        "<blockquote><b>Статус вашей подписки:</b></blockquote>\n"
-        f"<blockquote>{html_escape(paid_status(record))}</blockquote>"
+        f"<b>Привет, {first}!</b>\n"
+        "Добро пожаловать в <b>SupplineVPN</b>.\n\n"
+        "<blockquote>Стабильное подключение и защита трафика в публичных сетях.\n"
+        "Один доступ работает на 3 устройствах.</blockquote>\n\n"
+        "<b>Ваш статус</b>\n"
+        f"Подписка: {html_escape(paid_status(record))}\n"
+        f"Пробный период: {html_escape(trial_status(record))}"
     )
 
 
@@ -236,13 +215,47 @@ APPS = {
 }
 
 
-SERVERS_PER_PAGE = 5
+def keys_active(user_id):
+    """Ключи действуют: есть доступ (подписка или пробный период) и не прошло KEY_TTL с даты выдачи.
+    Дата выдачи ставится при оплате и выдаче пробного периода (db.py). Старым пользователям без даты
+    она оценивается как конец подписки минус KEY_TTL."""
+    user = db.get_user(user_id) or {}
+    if not has_access(user):
+        return False
+    now = int(time.time())
+    if "keys_issued_at" not in user:
+        if user.get("paid_until"):
+            user["keys_issued_at"] = max(int(user["paid_until"]) - KEY_TTL, 0)
+        else:
+            user["keys_issued_at"] = now
+        db.save_user(user_id, user)
+    return now - int(user["keys_issued_at"]) < KEY_TTL
+
+
+def refresh_left(user_id):
+    """Секунд до следующего обновления серверов (0 — можно обновить)."""
+    u = db.get_user(user_id) or {}
+    return max(0, REFRESH_COOLDOWN - (int(time.time()) - int(u.get("servers_refreshed_at", 0))))
+
+
+def refresh_servers(user_id):
+    """Обновляет персональный набор серверов. Общая логика для бота и мини приложения.
+    Возвращает None при успехе или текст ошибки для пользователя."""
+    if not keys_active(user_id):
+        return "Серверы доступны с подпиской или пробным периодом."
+    left = refresh_left(user_id)
+    if left > 0:
+        return f"Обновить серверы можно через {left // 3600} ч {(left % 3600) // 60} мин."
+    user = db.get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
+    user["servers_seed"] = int(user.get("servers_seed", 0)) + 1
+    user["servers_refreshed_at"] = int(time.time())
+    db.save_user(user_id, user)
+    return None
 
 
 def _tcp_ping_ms(uri_without_name):
     """TCP-задержка до host:port из vless:// ссылки в мс. При ошибке или таймауте — 0."""
     import socket
-    import time
     from urllib.parse import urlsplit
 
     try:
@@ -258,30 +271,28 @@ def _tcp_ping_ms(uri_without_name):
 
 
 def get_user_vless_servers(user_id):
+    """Персональный набор из 3 серверов. Набор закреплён за пользователем и номером обновления
+    (servers_seed), поэтому между обновлениями не меняется."""
     import random
     from urllib.parse import quote
 
+    if not keys_active(user_id):
+        return []
     try:
-        # Пул ключей, который загружен в Upstash (ключ servers:pool), читаем через уже существующий db.py
         pool = db.get_servers_pool()
         all_links = [s["uri"] for s in pool if isinstance(s, dict) and str(s.get("uri", "")).startswith("vless://")]
         if not all_links:
             print("servers:pool is empty or has no vless uri")
             return []
-
-        if not keys_active(user_id):
-            return []  # срок ключей истёк: сервера не выдаём, пока не будет новой оплаты или пробного периода
-        # Набор 3 ключей закреплён за user_id и номером обновления (servers_seed): между обновлениями не меняется
         user = db.get_user(user_id) or {}
         rng = random.Random(f"{int(user_id)}:{int(user.get('servers_seed', 0))}")
         user_links = rng.sample(all_links, min(3, len(all_links)))
-
         servers = []
         for link in user_links:
             # Тело ссылки до первого '#' не меняем; меняем только имя после него
             before_hash = link.split("#", 1)[0]
             node_num = rng.randint(1, 999)
-            name = f"🔥 MyVPN | Premium Node {node_num}"
+            name = f"MyVPN | Premium Node {node_num}"
             servers.append({
                 "name": name,
                 "ping": _tcp_ping_ms(before_hash),
@@ -293,57 +304,35 @@ def get_user_vless_servers(user_id):
         return []
 
 
-KEY_TTL = 30 * 86400  # сек: ключи действуют 30 дней с последней оплаты или пробного периода
-REFRESH_COOLDOWN = 3 * 3600  # сек: обновлять серверы можно не чаще раза в 3 часа
-
-
-def keys_active(user_id):
-    """Ключи пользователя действуют: есть доступ (подписка/пробный период) и не прошло KEY_TTL с выдачи.
-    Пользователям, у которых ещё нет даты выдачи ключей, она проставляется при первом обращении."""
-    user = db.get_user(user_id) or {}
-    if not has_access(user):
-        return False
-    now = int(time.time())
-    if "keys_issued_at" not in user:
-        # Старые пользователи: дата реальной оплаты раньше не сохранялась.
-        # Оценка: конец подписки минус KEY_TTL (для тарифа 1 мес это совпадает с датой оплаты).
-        if user.get("paid_until"):
-            user["keys_issued_at"] = max(int(user["paid_until"]) - KEY_TTL, 0)
-        else:
-            user["keys_issued_at"] = now
-        db.save_user(user_id, user)
-    return now - int(user["keys_issued_at"]) < KEY_TTL
-
-
-def refresh_servers(user_id):
-    """Обновляет персональный набор серверов по кнопке в мини приложении.
-    Возвращает None при успехе или текст ошибки, если ещё не прошло REFRESH_COOLDOWN."""
-    user = db.get_user(user_id) or {"id": user_id, "trial_until": 0, "referrer": None, "invited": 0}
-    now = int(time.time())
-    last = int(user.get("servers_refreshed_at", 0))
-    if now - last < REFRESH_COOLDOWN:
-        left = REFRESH_COOLDOWN - (now - last)
-        return f"Обновить серверы можно через {left // 3600} ч {(left % 3600) // 60} мин."
-    user["servers_seed"] = int(user.get("servers_seed", 0)) + 1
-    user["servers_refreshed_at"] = now
-    db.save_user(user_id, user)
-    return None
-
-
 def user_servers(user_id):
-    """Персональный список серверов пользователя: 3–5 лучших по пингу, без повторов у других."""
+    """Серверы для бота и мини приложения: одна и та же логика выдачи."""
     if not keys_active(user_id):
-        db.release_servers(user_id)  # срок истёк: освобождаем сервера для других
+        db.release_servers(user_id)
         return []
-    return db.assign_servers(user_id, count_min=3, count_max=5)
+    return get_user_vless_servers(user_id)
+
+
+def _refresh_button(user_id):
+    left = refresh_left(user_id)
+    if left <= 0:
+        return {"text": "Обновить серверы", "callback_data": "srvr"}
+    return {"text": f"Обновить через {left // 3600} ч {(left % 3600) // 60} мин", "callback_data": "srvr"}
 
 
 def servers_page(user_id, page):
-    """Страница персонального списка серверов по SERVERS_PER_PAGE штук.
-    callback_data содержит индекс внутри списка пользователя."""
+    """Экран «Серверы» в боте. Список и обновление такие же, как в мини приложении."""
+    if not keys_active(user_id):
+        text = ("<b>Серверы недоступны</b>\n\n"
+                "Оформите подписку или пробный период, чтобы получить доступ к серверам.")
+        return text, {"inline_keyboard": [
+            [{"text": "Купить подписку", "callback_data": "buy", "style": "success"}],
+            [{"text": "Назад в меню", "callback_data": "menu"}],
+        ]}
     servers = user_servers(user_id)
     if not servers:
-        return "Серверы\n\nПодходящих серверов сейчас нет. Попробуйте позже.", back_markup()
+        return ("<b>Серверов пока нет</b>\n\nПопробуйте обновить список немного позже.",
+                {"inline_keyboard": [[_refresh_button(user_id)],
+                                     [{"text": "Назад в меню", "callback_data": "menu"}]]})
     total_pages = max(1, -(-len(servers) // SERVERS_PER_PAGE))
     page = max(0, min(page, total_pages - 1))
     start = page * SERVERS_PER_PAGE
@@ -353,36 +342,33 @@ def servers_page(user_id, page):
         rows.append([{"text": f"{s['name']} · {s['ping']} мс", "callback_data": f"srv:{i}"}])
     nav = []
     if page > 0:
-        nav.append({"text": "◀️ Назад", "callback_data": f"srvp:{page - 1}"})
+        nav.append({"text": "Назад", "callback_data": f"srvp:{page - 1}"})
     nav.append({"text": f"{page + 1} / {total_pages}", "callback_data": "noop"})
     if page < total_pages - 1:
-        nav.append({"text": "Вперёд ▶️", "callback_data": f"srvp:{page + 1}"})
+        nav.append({"text": "Вперёд", "callback_data": f"srvp:{page + 1}"})
     rows.append(nav)
-    rows.append([{"text": "◀️ Назад в меню", "callback_data": "menu"}])
-    text = f"Ваши серверы: {len(servers)} шт. Выберите сервер (от быстрого к медленному)."
+    rows.append([_refresh_button(user_id)])
+    rows.append([{"text": "Назад в меню", "callback_data": "menu"}])
+    text = (f"<b>Ваши серверы: {len(servers)} шт.</b>\n\n"
+            "<blockquote>Выберите сервер, чтобы получить ключ и инструкцию.\n"
+            "Список можно обновить раз в 3 часа.</blockquote>")
     return text, {"inline_keyboard": rows}
 
 
 def server_detail(user_id, index):
-    """Текст инструкции и ключа для сервера index из персонального списка пользователя."""
+    """Инструкция и ключ для сервера index из персонального списка пользователя."""
     servers = user_servers(user_id)
     if index < 0 or index >= len(servers):
         return "Сервер не найден. Откройте список серверов заново.", back_markup()
     s = servers[index]
     page = index // SERVERS_PER_PAGE
-    lines = [f"Сервер: {s['name']} · {s['ping']} мс", "", "Инструкция по приложениям:"]
+    lines = [f"<b>{html_escape(s['name'])}</b> · {s['ping']} мс", "", "<b>Инструкция по приложениям</b>"]
     for title, app, how in APPS.values():
-        lines.append(f"• {title}: {app}. {how}")
-    lines += ["", "Ключ (нажмите на него, чтобы скопировать, и вставьте в приложение):"]
-    # Ключ отдельным текстом в <code>: по нажатию Telegram копирует его целиком.
-    # Кнопка copy_text здесь не используется: Telegram принимает в ней не больше 256 символов.
-    markup = {"inline_keyboard": [
-        [{"text": "◀️ К серверам", "callback_data": f"srvp:{page}"}],
-    ]}
-    return "\n".join(lines) + f"\n<code>{html_escape(s['uri'])}</code>", markup
-
-
-INIT_DATA_MAX_AGE = 24 * 3600  # секунд, после этого initData считается устаревшим
+        lines.append(f"<b>{title}</b>: {html_escape(app)}.\n<i>{html_escape(how)}</i>")
+    lines += ["", "<b>Ключ</b> (нажмите, чтобы скопировать):",
+              f"<code>{html_escape(s['uri'])}</code>"]
+    markup = {"inline_keyboard": [[{"text": "К серверам", "callback_data": f"srvp:{page}"}]]}
+    return "\n".join(lines), markup
 
 
 def verify_init_data(init_data, max_age=INIT_DATA_MAX_AGE):
@@ -424,31 +410,42 @@ def has_access(user):
 
 
 def screen(name, user, arg=""):
-    first = user.get("first_name", "")
+    first = html_escape(user.get("first_name", ""))
     uid = user.get("id")
     record = db.get_user(uid) or {}
     if name == "profile":
-        username = f"@{user['username']}" if user.get("username") else "не задан"
+        username = f"@{html_escape(user['username'])}" if user.get("username") else "не задан"
         text = (
-            f"Профиль\n\nID: {uid}\nИмя: {first}\nUsername: {username}\n\n"
-            f"Пробный период: {trial_status(record)}\n"
+            "<b>Профиль</b>\n\n"
+            f"ID: <code>{uid}</code>\n"
+            f"Имя: {first}\n"
+            f"Username: {username}\n\n"
+            "<blockquote>"
+            f"Пробный период: {html_escape(trial_status(record))}\n"
             f"Приглашено друзей: {record.get('invited', 0)}"
+            "</blockquote>"
         )
         return text, back_markup()
     if name == "subscription":
-        text = f"Подписка: {paid_status(record)}\nПробный период: {trial_status(record)}"
+        text = (
+            "<b>Подписка</b>\n\n"
+            "<blockquote>"
+            f"Статус: {html_escape(paid_status(record))}\n"
+            f"Пробный период: {html_escape(trial_status(record))}"
+            "</blockquote>"
+        )
         markup = {"inline_keyboard": [
-            [{"text": "💎 Купить", "callback_data": "buy"}],
-            [{"text": "◀️ Назад в меню", "callback_data": "menu"}],
+            [{"text": "Купить подписку", "callback_data": "buy", "style": "success"}],
+            [{"text": "Назад в меню", "callback_data": "menu"}],
         ]}
         return text, markup
     if name == "buy":
-        text = "Купить подписку\n\nВыберите способ оплаты:"
+        text = "<b>Оформление подписки</b>\n\nВыберите способ оплаты:"
         markup = {"inline_keyboard": [
-            [{"text": "💵 CryptoBot (USDT)", "callback_data": "method:crypto"}],
-            [{"text": "⭐ TG Stars", "callback_data": "method:stars"}],
-            [{"text": "💳 СБП", "callback_data": "method:sbp"}],
-            [{"text": "Назад", "callback_data": "menu"}],
+            [{"text": "CryptoBot · USDT", "callback_data": "method:crypto"}],
+            [{"text": "Telegram Stars", "callback_data": "method:stars"}],
+            [{"text": "СБП · рубли", "callback_data": "method:sbp"}],
+            [{"text": "Назад в меню", "callback_data": "menu"}],
         ]}
         return text, markup
     if name == "method":
@@ -459,78 +456,85 @@ def screen(name, user, arg=""):
         elif arg == "stars":
             rows = [[{"text": f"{title} · {stars} звёзд", "callback_data": f"buy:{k}"}]
                     for k, (title, _, stars) in PLANS.items()]
-            label = "TG Stars"
+            label = "Telegram Stars"
         elif arg == "sbp":
             rows = [[{"text": f"{title} · {SBP_PRICES[k]} ₽", "callback_data": f"pg:{k}"}]
                     for k, (title, _, _) in PLANS.items()]
             label = "СБП"
         else:
-            return "Способ не найден.", back_markup()
+            return "Способ оплаты не найден.", back_markup()
         rows.append([{"text": "Назад", "callback_data": "buy"}])
-        return f"Оплата: {label}\n\nВыберите тариф:", {"inline_keyboard": rows}
+        return f"<b>Оплата: {label}</b>\n\nВыберите тариф:", {"inline_keyboard": rows}
     if name == "sbp":
-        lines = ["Оплата: СБП\n", "Тарифы (цены в рублях):"]
+        lines = ["<b>Оплата: СБП</b>", "", "<blockquote>Тарифы (цены в рублях):"]
         for key, (title, _, _) in PLANS.items():
-            lines.append(f"• {title} — {SBP_PRICES[key]} ₽")
-        lines.append("\nНажмите тариф — откроется ссылка на оплату по СБП.")
+            lines.append(f"{title} — {SBP_PRICES[key]} ₽")
+        lines.append("Нажмите тариф, откроется ссылка на оплату.</blockquote>")
         rows = [[{"text": f"{title} · {SBP_PRICES[k]} ₽", "callback_data": f"pg:{k}"}]
                 for k, (title, _, _) in PLANS.items()]
-        rows.append([{"text": "◀️ Назад", "callback_data": "buy"}])
+        rows.append([{"text": "Назад", "callback_data": "buy"}])
         return "\n".join(lines), {"inline_keyboard": rows}
     if name == "plan":
         if arg not in PLANS:
             return "Тариф не найден.", back_markup()
         title, _, stars = PLANS[arg]
         markup = {"inline_keyboard": [
-            [{"text": f"Оплатить {stars} ⭐", "callback_data": f"buy:{arg}"}],
+            [{"text": f"Оплатить {stars} звёзд", "callback_data": f"buy:{arg}"}],
             [{"text": f"Оплатить {CRYPTO_PRICES[arg]} USDT", "callback_data": f"cbuy:{arg}"}],
-            [{"text": "⬅ К тарифам", "callback_data": "subscription"}],
+            [{"text": "К тарифам", "callback_data": "subscription"}],
         ]}
-        return f"Тариф «{title}» — {stars} ⭐\n\nОплата звёздами Telegram внутри бота.", markup
+        text = (f"<b>Тариф «{title}»</b>\n\n"
+                f"{stars} Telegram Stars или {CRYPTO_PRICES[arg]} USDT.\n"
+                "Оплата проходит внутри бота.")
+        return text, markup
+    return screen_rest(name, user, arg, record)
+
+
+def screen_rest(name, user, arg, record):
+    uid = user.get("id")
     if name == "keys":
-        if not has_access(record):
-            db.release_servers(uid)
-            return "Ключи\n\nДоступа сейчас нет. Оформите подписку или пробный период в разделе «Купить».", back_markup()
         return servers_page(uid, 0)
     if name == "devices":
-        return "Устройства\n\nПодключено: 0 из 3.", back_markup()
+        return ("<b>Устройства</b>\n\nПодключено: 0 из 3.\n"
+                "<i>Учёт устройств появится позже.</i>"), back_markup()
     if name == "referral":
         link = f"https://t.me/{get_bot_username()}?start=ref{uid}"
         text = (
-            f"Реферальная программа\n\n"
-            f"Ваша ссылка:\n{link}\n\n"
-            "Друг получает 3 дня пробного периода, вы тоже получаете 3 дня за каждого друга.\n"
-            f"Приглашено: {record.get('invited', 0)}"
+            "<b>Реферальная программа</b>\n\n"
+            "Друг получает 3 дня пробного периода, вы получаете 3 дня за каждого друга.\n\n"
+            f"Ваша ссылка:\n<code>{link}</code>\n\n"
+            f"Приглашено: <b>{record.get('invited', 0)}</b>"
         )
         return text, back_markup()
     if name == "features":
         text = (
-            "Функции SupplineVPN\n\n"
-            "SupplineVPN выдаёт персональный ключ доступа.\n"
-            "SupplineVPN подключает несколько устройств.\n"
-            "SupplineVPN принимает оплату звёздами Telegram, USDT или СБП."
+            "<b>Возможности SupplineVPN</b>\n\n"
+            "Персональный набор серверов с ключами\n"
+            "Подключение до 3 устройств\n"
+            "Обновление серверов раз в 3 часа\n"
+            "Оплата Telegram Stars, USDT или СБП"
         )
         return text, back_markup()
     if name == "about":
         text = (
-            "О сервисе SupplineVPN\n\n"
-            "Сервис предоставляет доступ к защищённому интернет-соединению. "
-            "Оплата, подписка и ключи управляются прямо в боте."
+            "<b>О сервисе SupplineVPN</b>\n\n"
+            "<blockquote>Доступ к защищённому интернет-соединению.\n"
+            "Оплата, подписка и ключи управляются прямо в боте.</blockquote>"
         )
         return text, back_markup()
     if name == "support":
-        text = "Поддержка\n\nПо всем вопросам напишите сюда, в этот чат. Мы ответим как можно скорее."
+        text = ("<b>Поддержка</b>\n\n"
+                "Напишите вопрос в этот чат, мы ответим как можно скорее.")
         return text, support_markup()
     if name == "help":
         text = (
-            "Помощь\n\n"
-            "/start — начать работу\n"
-            "/menu — главное меню\n"
-            "/help — эта справка"
+            "<b>Помощь</b>\n\n"
+            "<code>/start</code> начать работу\n"
+            "<code>/menu</code> главное меню\n"
+            "<code>/help</code> эта справка"
         )
         return text, back_markup()
     return welcome_text(user, record), menu_markup()
-
 
 
 def send(chat_id, text, markup, parse_mode=None):
@@ -572,7 +576,6 @@ def send_invoice(chat_id, user_id, key):
 
 
 def handle_pre_checkout(pcq):
-    # Подтверждаем оплату, если тариф известен
     payload = pcq.get("invoice_payload", "")
     ok = payload.startswith("plan:") and payload.split(":")[1] in PLANS
     call("answerPreCheckoutQuery", {
@@ -588,8 +591,7 @@ def handle_successful_payment(message):
     user_id = message["from"]["id"]
     _, days, _ = PLANS[key]
     db.extend_paid(user_id, days)
-    send(message["chat"]["id"], f"Оплата прошла. Подписка продлена на {days} дн. Проверьте статус в разделе «Подписка».", reply_keyboard())
-
+    send(message["chat"]["id"], f"Оплата прошла. Подписка продлена на {days} дн. Статус смотрите в разделе «Подписка».", reply_keyboard())
 
 
 def handle_web_app_data(message):
@@ -663,7 +665,6 @@ def crypto_check(chat_id, user_id, invoice_id, key):
     send(chat_id, f"Оплата USDT получена. Подписка продлена на {days} дн.", reply_keyboard())
 
 
-
 SUPPORT_HOOKS_USER = {
     "notify_new": lambda ticket: notify_admin_new_ticket(ticket),
     "notify_message": lambda ticket, text: notify_admin_ticket_message(ticket, text),
@@ -675,23 +676,43 @@ SUPPORT_HOOKS_ADMIN = {
 }
 
 
+def handle_servers_refresh(cb):
+    """Кнопка «Обновить серверы» в боте. Та же логика, что у мини приложения (refresh_servers)."""
+    uid = cb["from"]["id"]
+    err = refresh_servers(uid)
+    call("answerCallbackQuery", {
+        "callback_query_id": cb["id"],
+        "text": err or "Серверы обновлены",
+        "show_alert": bool(err),
+    })
+    msg = cb.get("message") or {}
+    chat_id = msg.get("chat", {}).get("id")
+    if err or not chat_id:
+        return
+    text, markup = servers_page(uid, 0)
+    edit_or_send(chat_id, msg.get("message_id"), text, markup, parse_mode="HTML")
+
+
 def handle_callback(cb):
     sender = cb.get("from") or {}
     if db.is_banned(sender.get("id")) and not is_admin(sender):
         call("answerCallbackQuery", {"callback_query_id": cb["id"], "text": "Доступ ограничен", "show_alert": True})
         return
-    # Оплата: pg:<тариф>. Листание документов тоже начинается с pg:, но это pg:<документ>:<страница> —
-    # такие callback'и пропускаем сюда и обрабатываем ниже (ветка name == "pg").
-    pg_arg = (cb.get("data") or "").split(":", 1)[1] if (cb.get("data") or "").startswith("pg:") else None
+    data = cb.get("data") or ""
+    if data == "srvr":
+        handle_servers_refresh(cb)
+        return
+    # Оплата: pg:<тариф>. Листание документов тоже начинается с pg:, но это pg:<документ>:<страница>
+    pg_arg = data.split(":", 1)[1] if data.startswith("pg:") else None
     if pg_arg is not None and ":" not in pg_arg and pg_arg not in DOCS:
-        ok, msg, url = platega.create_payment(cb["from"]["id"], pg_arg)
+        ok, msg_text, url = platega.create_payment(cb["from"]["id"], pg_arg)
         chat_id = cb["message"]["chat"]["id"]
         if ok:
-            send(chat_id, msg, {"inline_keyboard": [[{"text": "Оплатить", "url": url}]]})
+            send(chat_id, msg_text, {"inline_keyboard": [[{"text": "Оплатить", "url": url}]]})
         else:
-            send(chat_id, msg, None)
+            send(chat_id, msg_text, None)
         return
-    if cb.get("data") == "ticket":
+    if data == "ticket":
         # Всплывающее уведомление поверх чата: подсказка, что делать дальше
         call("answerCallbackQuery", {
             "callback_query_id": cb["id"],
@@ -704,32 +725,30 @@ def handle_callback(cb):
     chat_id = msg.get("chat", {}).get("id")
     if not chat_id:
         return
-    name, _, arg = cb.get("data", "").partition(":")
+    message_id = msg.get("message_id")
+    uid = cb["from"]["id"]
+    name, _, arg = data.partition(":")
     if name == "buy" and arg in PLANS:
-        send_invoice(chat_id, cb["from"]["id"], arg)
+        send_invoice(chat_id, uid, arg)
         return
     if name == "cbuy" and arg in PLANS:
-        crypto_invoice(chat_id, cb["from"]["id"], arg)
+        crypto_invoice(chat_id, uid, arg)
         return
     if name == "check":
         invoice_id, _, key = arg.partition(":")
-        crypto_check(chat_id, cb["from"]["id"], invoice_id, key)
+        crypto_check(chat_id, uid, invoice_id, key)
         return
     if name == "docs":
-        edit_or_send(chat_id, msg.get("message_id"), "📄 Документы\n\nВыберите документ:", docs_markup())
+        edit_or_send(chat_id, message_id, "<b>Документы</b>\n\nВыберите документ:", docs_markup(), parse_mode="HTML")
         return
     if name == "srvp" and arg.isdigit():
-        uid = cb["from"]["id"]
-        if not has_access(db.get_user(uid) or {}):
-            edit_or_send(chat_id, msg.get("message_id"), "Серверы доступны с подпиской или пробным периодом.", back_markup())
-            return
         text, markup = servers_page(uid, int(arg))
-        edit_or_send(chat_id, msg.get("message_id"), text, markup)
+        edit_or_send(chat_id, message_id, text, markup, parse_mode="HTML")
         return
     if name == "srv" and arg.isdigit():
-        uid = cb["from"]["id"]
-        if not has_access(db.get_user(uid) or {}):
-            edit_or_send(chat_id, msg.get("message_id"), "Серверы доступны с подпиской или пробным периодом.", back_markup())
+        if not keys_active(uid):
+            text, markup = servers_page(uid, 0)
+            edit_or_send(chat_id, message_id, text, markup, parse_mode="HTML")
             return
         # Инструкция отправляется новым сообщением: список остаётся на месте
         text, markup = server_detail(uid, int(arg))
@@ -743,28 +762,24 @@ def handle_callback(cb):
         if is_admin(cb["from"]):
             send(chat_id, "Вы администратор: обращения создают пользователи. Отвечайте кнопкой «Ответить» под обращением.", None)
             return
-        db.set_support_wait(cb["from"]["id"])
+        db.set_support_wait(uid)
         # force_reply открывает строку ввода с подсказкой: пользователь сразу пишет обращение
         call("sendMessage", {
             "chat_id": chat_id,
-            "text": "✍️ Опишите ваш вопрос одним сообщением. Ответ придёт в этот чат.",
+            "text": "Опишите ваш вопрос одним сообщением. Ответ придёт в этот чат.",
             "reply_markup": {"force_reply": True, "input_field_placeholder": "Ваш вопрос..."},
         })
         return
     if name == "doc" and arg in DOCS:
-        show_doc_page(chat_id, msg.get("message_id"), arg, 1)
+        show_doc_page(chat_id, message_id, arg, 1)
         return
     if name == "pg":
         key, _, page = arg.partition(":")
         if key in DOCS and page.isdigit():
-            show_doc_page(chat_id, msg.get("message_id"), key, int(page))
+            show_doc_page(chat_id, message_id, key, int(page))
         return
     text, markup = screen(name, cb["from"], arg)
-    # Главный экран использует HTML-цитаты, остальные экраны — обычный текст
-    parse_mode = "HTML" if name == "menu" else None
-    if name == "keys":
-        parse_mode = None
-    edit_or_send(chat_id, msg.get("message_id"), text, markup, parse_mode=parse_mode)
+    edit_or_send(chat_id, message_id, text, markup, parse_mode="HTML")
 
 
 def handle_start(message, user, payload):
@@ -773,15 +788,10 @@ def handle_start(message, user, payload):
         referrer = payload[3:] if payload.startswith("ref") and payload[3:].isdigit() else None
         if referrer and db.register_referral(user["id"], referrer):
             call("sendMessage", {"chat_id": int(referrer), "text": "По вашей ссылке зарегистрировался новый пользователь. Вам начислено 3 дня пробного периода."})
-            note = "Вы пришли по приглашению: вам начислено 3 дня пробного периода."
         else:
             # Пробный период только по приглашению. Без реферальной ссылки — регистрация без триала.
             db.save_user(user["id"], {"id": user["id"], "trial_until": 0, "referrer": None, "invited": 0})
-            note = "Пробный период доступен по приглашению от друга (3 дня по реферальной ссылке)."
-    else:
-        note = "С возвращением!"
 
-    # Приветствие со статусом и преимуществами сразу, нижняя клавиатура снимается
     record = db.get_user(user["id"]) or {}
     send(chat_id, welcome_text(user, record), menu_markup(), parse_mode="HTML")
     call("sendMessage", {"chat_id": chat_id, "text": "\u200b", "reply_markup": {"remove_keyboard": True}})
@@ -796,13 +806,10 @@ def is_admin(user):
     return uid is not None and str(uid) == str(ADMIN_CHAT_ID).strip()
 
 
-STATUS_TITLE = {"open": "🟡 открыто", "answered": "🟢 отвечено", "closed": "⚪ закрыто"}
-
-
 def ticket_admin_markup(ticket_id):
     return {"inline_keyboard": [
-        [{"text": "✉️ Ответить", "callback_data": f"tr:{ticket_id}"},
-         {"text": "✅ Закрыть", "callback_data": f"tc:{ticket_id}"}],
+        [{"text": "Ответить", "callback_data": f"tr:{ticket_id}"},
+         {"text": "Закрыть", "callback_data": f"tc:{ticket_id}"}],
     ]}
 
 
@@ -813,7 +820,7 @@ def notify_admin_new_ticket(ticket):
     who = html_escape(ticket.get("name") or "без имени")
     call("sendMessage", {
         "chat_id": ADMIN_CHAT_ID,
-        "text": (f"🆕 Новое обращение #{ticket['id']}\n"
+        "text": (f"Новое обращение #{ticket['id']}\n"
                  f"От: {who} (ID {ticket['user_id']})\n\n"
                  f"{html_escape(ticket['text'])}\n\n"
                  f"Ответить: /reply {ticket['id']} текст"),
@@ -845,13 +852,13 @@ def send_ticket_reply(ticket, answer):
 
 
 def notify_admin_ticket_message(ticket, text):
-    """Сообщение пользователя из мини приложения по уже открытому обращению: уведомляем админа с кнопками."""
+    """Сообщение пользователя из мини приложения по уже открытому обращению."""
     if not ADMIN_CHAT_ID:
         return
     who = html_escape(ticket.get("name") or "без имени")
     call("sendMessage", {
         "chat_id": ADMIN_CHAT_ID,
-        "text": (f"💬 Новое сообщение в обращении #{ticket['id']}\n"
+        "text": (f"Новое сообщение в обращении #{ticket['id']}\n"
                  f"От: {who} (ID {ticket['user_id']})\n\n"
                  f"{html_escape(text)}"),
         "parse_mode": "HTML",
@@ -864,7 +871,7 @@ def notify_admin_ticket_closed_by_user(ticket):
     if not ADMIN_CHAT_ID:
         return
     call("sendMessage", {"chat_id": ADMIN_CHAT_ID,
-                         "text": f"✅ Пользователь закрыл обращение #{ticket['id']}. Новое сообщение от него откроет его снова."})
+                         "text": f"Пользователь закрыл обращение #{ticket['id']}. Новое сообщение от него откроет его снова."})
 
 
 def close_ticket(ticket):
@@ -947,7 +954,7 @@ def handle_admin_callback(cb, name, arg):
     db.set_admin_reply_wait(cb["from"]["id"], arg)
     call("sendMessage", {
         "chat_id": chat_id,
-        "text": (f"✉️ Ответ на обращение #{arg}\n"
+        "text": (f"Ответ на обращение #{arg}\n"
                  f"От: {ticket.get('name') or 'без имени'} (ID {ticket['user_id']})\n\n"
                  f"Вопрос:\n{ticket['text']}\n\n"
                  f"Напишите ответ одним сообщением. Он сразу уйдёт пользователю."),
@@ -974,7 +981,7 @@ def handle_admin_command(chat_id, user, text):
         return False
     if not is_admin(user):
         if not ADMIN_CHAT_ID:
-            send(chat_id, f"Админ-команды не настроены: в Vercel не задана переменная ADMIN_CHAT_ID. "
+            send(chat_id, "Админ-команды не настроены: в Vercel не задана переменная ADMIN_CHAT_ID. "
                           f"Ваш Telegram ID: {user.get('id')}. Добавьте его как ADMIN_CHAT_ID и сделайте Redeploy.", None)
         else:
             send(chat_id, "Нет доступа: эта команда только для администратора.", None)
@@ -996,16 +1003,16 @@ def handle_admin_command(chat_id, user, text):
             return True
         days = int(parts[2])
         u = db.extend_paid(target, days)
-        send(chat_id, f"✅ Вы выдали пользователю {target} подписку на {days} дн. "
+        send(chat_id, f"Пользователю {target} выдана подписка на {days} дн. "
                       f"Доступ до {fmt_date(u.get('paid_until'))}.", None)
-        call("sendMessage", {"chat_id": target, "text": f"🎁 Вам выдана подписка на {days} дн."})
+        call("sendMessage", {"chat_id": target, "text": f"Вам выдана подписка на {days} дн."})
     elif cmd == "/revoke":
         db.revoke_paid(target)
-        send(chat_id, f"✅ Подписка пользователя {target} снята.", None)
+        send(chat_id, f"Подписка пользователя {target} снята.", None)
     elif cmd in ("/ban", "/unban"):
         banned = cmd == "/ban"
         db.set_banned(target, banned)
-        send(chat_id, f"✅ Вы {'заблокировали' if banned else 'разблокировали'} пользователя {target}.", None)
+        send(chat_id, f"Пользователь {target} {'заблокирован' if banned else 'разблокирован'}.", None)
         if banned:
             call("sendMessage", {"chat_id": target, "text": "Доступ к сервису ограничен администратором."})
     else:  # /user
@@ -1076,20 +1083,94 @@ def handle_message(message):
     elif text in ("/menu", "/help"):
         name = "help" if text == "/help" else "menu"
         body, markup = screen(name, user)
-        send(chat_id, body, markup)
+        send(chat_id, body, markup, parse_mode="HTML")
     elif text == BTN_PROFILE:
         body, markup = screen("profile", user)
-        send(chat_id, body, markup)
+        send(chat_id, body, markup, parse_mode="HTML")
     elif text == BTN_SUBSCRIPTION:
         body, markup = screen("subscription", user)
-        send(chat_id, body, markup)
+        send(chat_id, body, markup, parse_mode="HTML")
     else:
-        body, markup = screen("menu", user)
-        send(chat_id, "Выберите раздел в меню:", markup)
+        send(chat_id, "Выберите раздел в меню:", menu_markup())
+
+
+REMIND_TEXT = {
+    ("paid", "3d"): "Подписка SupplineVPN закончится через 3 дня.\n\nПродлите её, чтобы серверы продолжали работать.",
+    ("paid", "1d"): "Подписка SupplineVPN закончится завтра.\n\nПродлите сейчас, чтобы не потерять доступ.",
+    ("paid", "end"): "Подписка SupplineVPN закончилась, серверы больше не выдаются.\n\nОформите подписку, чтобы вернуть доступ.",
+    ("trial", "3d"): "Пробный период SupplineVPN закончится через 3 дня.\n\nОформите подписку, чтобы не потерять доступ.",
+    ("trial", "1d"): "Пробный период SupplineVPN закончится завтра.\n\nОформите подписку, чтобы не потерять доступ.",
+    ("trial", "end"): "Пробный период SupplineVPN закончился, серверы больше не выдаются.\n\nОформите подписку, чтобы продолжить.",
+}
+
+
+def _remind_stage(until, now):
+    """Этап: '3d', '1d', 'end' (срок истёк недавно), 'old' (истёк давно, молча пропускаем) или None."""
+    left = until - now
+    if left <= 0:
+        return "end" if left > -2 * DAY else "old"
+    if left <= DAY:
+        return "1d"
+    if left <= 3 * DAY:
+        return "3d"
+    return None
+
+
+def _remind_user(uid, user, kind):
+    """Отправляет напоминание этапа, если он ещё не отправлялся для текущего срока.
+    Возвращает True, если сообщение ушло. Меняет user (сохраняет вызывающий код)."""
+    field = "paid_until" if kind == "paid" else "trial_until"
+    until = int(user.get(field, 0) or 0)
+    if until <= 0 or user.get("banned"):
+        return False
+    stage = _remind_stage(until, int(time.time()))
+    if stage is None:
+        return False
+    state_key = f"remind_{kind}"
+    state = user.get(state_key) or {}
+    if state.get("until") != until:  # новый срок (после продления) — напоминания начинаются заново
+        state = {"until": until, "sent": []}
+    sent = set(state.get("sent", []))
+    sent_now = False
+    if stage == "old":
+        sent.add("end")
+    elif stage not in sent:
+        call("sendMessage", {
+            "chat_id": int(uid),
+            "text": REMIND_TEXT[(kind, stage)],
+            "reply_markup": {"inline_keyboard": [[{"text": "Продлить", "callback_data": "buy", "style": "success"}]]},
+        })
+        sent.add(stage)
+        sent_now = True
+    if stage == "1d":
+        sent.add("3d")  # этап 3d уже неактуален, не отправляем его задним числом
+    state["until"] = until
+    state["sent"] = sorted(sent)
+    user[state_key] = state
+    return sent_now
+
+
+def run_reminders():
+    """Проходит по всем пользователям и отправляет нужные напоминания. Возвращает число отправленных."""
+    sent = 0
+    for uid, user in db.iter_users():
+        if not uid:
+            continue
+        before = json.dumps(user, sort_keys=True)
+        for kind in ("paid", "trial"):
+            if _remind_user(uid, user, kind):
+                sent += 1
+        if json.dumps(user, sort_keys=True) != before:
+            db.save_user(uid, user)
+    return sent
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # Cron раз в сутки: Vercel передаёт CRON_SECRET в Authorization
+        if "remind=" in self.path:
+            self._remind()
+            return
         # Данные для мини приложения: статус подписки и пробного периода (без секретов)
         if "support=" in self.path:
             self._support_get()
@@ -1101,6 +1182,16 @@ class handler(BaseHTTPRequestHandler):
             self._me()
             return
         self._reply(200, "bot is alive")
+
+    def _remind(self):
+        if CRON_SECRET and self.headers.get("Authorization") != f"Bearer {CRON_SECRET}":
+            self._reply(401, "unauthorized")
+            return
+        try:
+            self._reply(200, f"reminders sent: {run_reminders()}")
+        except Exception as exc:
+            print("remind error:", exc)
+            self._reply(500, "error")
 
     def _json(self, code, data):
         body = json.dumps(data, ensure_ascii=False)
@@ -1116,18 +1207,16 @@ class handler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     def _support_get(self):
-        """Чат поддержки: список обращений пользователя и выбранный чат. Админ: ?support=all — все обращения."""
+        """Чат поддержки: список обращений пользователя и выбранный чат. Админ: все обращения."""
         uid = request_user_id(self.path)
         if not uid:
             self._json(403, {"error": "forbidden"})
             return
         if is_admin({"id": uid}):
-            # Админ всегда получает панель обращений, даже при обычном опросе
-            self._support_admin_list()
+            self._json(200, support.admin_list())
             return
         query = parse_qs(urlparse(self.path).query)
         ticket_id = int(query.get("ticket_id", ["0"])[0] or 0)
-        # ticket_id — чат, который открыт в интерфейсе: опрос обновляет именно его
         self._support_state(uid, ticket_id=ticket_id or None)
 
     def _support_post(self, length):
@@ -1140,21 +1229,12 @@ class handler(BaseHTTPRequestHandler):
         action = data.get("action", "send")
         if is_admin({"id": uid}):
             if action in ("admin_open", "admin_reply", "admin_close"):
-                self._support_admin_action(action, data)
+                code, body = support.admin_action(dict(data, action=action), SUPPORT_HOOKS_ADMIN)
+                self._json(code, body)
             else:
                 self._json(403, {"error": "Администратор не пишет в поддержку. Отвечайте на обращения ниже."})
             return
         code, body = support.user_action(uid, dict(data, name=data.get("name", "")), SUPPORT_HOOKS_USER)
-        self._json(code, body)
-
-    def _support_get_response(self, uid):
-        self._json(200, support.state_for_user(uid))
-
-    def _support_admin_list(self):
-        self._json(200, support.admin_list())
-
-    def _support_admin_action(self, action, data):
-        code, body = support.admin_action(dict(data, action=action), SUPPORT_HOOKS_ADMIN)
         self._json(code, body)
 
     def _support_state(self, uid, ticket_id=None, new_chat=False):
@@ -1165,19 +1245,16 @@ class handler(BaseHTTPRequestHandler):
         self._json(200, support.state_for_user(uid, ticket=ticket, new_chat=new_chat))
 
     def _servers(self):
-        """Персональный список серверов пользователя для мини приложения. Без доступа — пусто."""
+        """Персональный список серверов для мини приложения. Без доступа — пусто."""
         uid = request_user_id(self.path)
         servers = []
-        error = None
+        error_text = None
         if uid and has_access(db.get_user(uid) or {}):
             if "refresh=" in self.path:
-                error = refresh_servers(uid)
-            servers = get_user_vless_servers(uid)
-        left = 0
-        if uid:
-            u = db.get_user(uid) or {}
-            left = max(0, REFRESH_COOLDOWN - (int(time.time()) - int(u.get("servers_refreshed_at", 0))))
-        body = json.dumps({"servers": servers, "access": bool(servers), "error": error,
+                error_text = refresh_servers(uid)
+            servers = user_servers(uid)
+        left = refresh_left(uid) if uid else 0
+        body = json.dumps({"servers": servers, "access": bool(servers), "error": error_text,
                            "refresh_left": left}, ensure_ascii=False)
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -1191,11 +1268,10 @@ class handler(BaseHTTPRequestHandler):
             self._reply(403, "forbidden")
             return
         record = db.get_user(uid) or {}
-        now = int(time.time())
         body = json.dumps({
             "paid_until": record.get("paid_until", 0),
             "trial_until": record.get("trial_until", 0),
-            "now": now,
+            "now": int(time.time()),
         })
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
