@@ -353,6 +353,21 @@ def list_tickets(limit=10):
     return tickets
 
 
+def iter_users():
+    """Перебирает всех пользователей (user:<id>) через SCAN. Отдаёт пары (id, данные)."""
+    cursor = "0"
+    while True:
+        res = _cmd("SCAN", cursor, "MATCH", "user:*", "COUNT", "500")
+        cursor, keys = res[0], res[1]
+        for key in keys:
+            raw = _cmd("GET", key)
+            if raw:
+                data = json.loads(raw)
+                yield data.get("id"), data
+        if cursor == "0":
+            break
+
+
 def get_servers_pool():
     raw = _cmd("GET", "servers:pool")
     return json.loads(raw) if raw else []
