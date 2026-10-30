@@ -239,6 +239,24 @@ APPS = {
 SERVERS_PER_PAGE = 5
 
 
+def _tcp_ping_ms(uri_without_name):
+    """TCP-задержка до host:port из vless:// ссылки в мс. При ошибке или таймауте — 0."""
+    import socket
+    import time
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(uri_without_name)
+        host, port = parts.hostname, parts.port
+        if not host or not port:
+            return 0
+        start = time.perf_counter()
+        with socket.create_connection((host, port), timeout=1.0):
+            return round((time.perf_counter() - start) * 1000)
+    except (OSError, ValueError):
+        return 0
+
+
 def get_user_vless_servers(user_id):
     import random
     from urllib.parse import quote
@@ -263,7 +281,7 @@ def get_user_vless_servers(user_id):
             name = f"🔥 MyVPN | Premium Node {node_num}"
             servers.append({
                 "name": name,
-                "ping": 0,
+                "ping": _tcp_ping_ms(before_hash),
                 "uri": f"{before_hash}#{quote(name)}",
             })
         return servers
