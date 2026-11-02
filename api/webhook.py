@@ -970,6 +970,39 @@ def fmt_date(ts):
     return time.strftime("%d.%m.%Y", time.localtime(ts))
 
 
+SUBLOAD_UA = "Happ/3.6.1 (iPhone; iOS 17.5.1; Scale/3.00)"
+
+
+def _links_from_text(raw):
+    """Ключи из текста подписки: Xray JSON, base64 или строки ссылок."""
+    import base64
+    import binascii
+    import xray_sub
+
+    links = xray_sub.links_from_subscription(raw)
+    if links:
+        return links
+    compact = "".join(raw.split())
+    compact += "=" * (-len(compact) % 4)
+    try:
+        text = base64.b64decode(compact, validate=True).decode("utf-8")
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        text = raw
+    links = xray_sub.links_from_subscription(text)
+    if links:
+        return links
+    prefixes = ("vless://", "vmess://", "trojan://", "ss://")
+    return [line.strip() for line in text.splitlines() if line.strip().startswith(prefixes)]
+
+
+def fetch_subscription_links(url):
+    """Скачивает подписку по ссылке (как клиент Happ) и возвращает список ключей."""
+    req = request.Request(url, headers={"User-Agent": SUBLOAD_UA})
+    with request.urlopen(req, timeout=20) as resp:
+        raw = resp.read().decode("utf-8", errors="ignore").strip()
+    return _links_from_text(raw)
+
+
 def handle_admin_command(chat_id, user, text):
     """Команды администратора: /grant, /revoke, /ban, /unban, /user.
     Возвращает True, если сообщение было командой (и обработано)."""
@@ -977,7 +1010,7 @@ def handle_admin_command(chat_id, user, text):
     if not parts:
         return False
     cmd = parts[0].lower()
-    if cmd not in ("/grant", "/revoke", "/ban", "/unban", "/user"):
+    if cmd not in ("/grant", "/revoke", "/ban", "/unban", "/user", "/subload", "/substatus"):
         return False
     if not is_admin(user):
         if not ADMIN_CHAT_ID:
@@ -985,6 +1018,36 @@ def handle_admin_command(chat_id, user, text):
                           f"Ваш Telegram ID: {user.get('id')}. Добавьте его как ADMIN_CHAT_ID и сделайте Redeploy.", None)
         else:
             send(chat_id, "Нет доступа: эта команда только для администратора.", None)
+        return True
+    if cmd == "/subload":
+        url = parts[1] if len(parts) > 1 else ""
+        if not url.startswith(("http://", "https://")):
+            send(chat_id, "Формат: /subload https://ссылка-на-подписку", None)
+            return True
+        try:
+            links = list(dict.fromkeys(fetch_subscription_links(url)))
+        except Exception as exc:
+            send(chat_id, f"Не удалось скачать подписку: {exc}", None)
+            return True
+        if not links:
+            send(chat_id, "В подписке не найдено ключей.", None)
+            return True
+        job = {"status": "pending", "chat_id": chat_id, "links": links, "created": int(time.time())}
+        db._cmd("SET", "subcheck:job", json.dumps(job, ensure_ascii=False))
+        send(chat_id, f"Подписка принята: {len(links)} ключей. Проверка идёт на ПК, результат придёт сюда.", None)
+        return True
+    if cmd == "/substatus":
+        raw = db._cmd("GET", "subcheck:job")
+        if not raw:
+            send(chat_id, "Заданий проверки нет.", None)
+            return True
+        job = json.loads(raw)
+        if job.get("status") == "done":
+            text_out = (f"Готово: всего {job.get('total')}, рабочих {job.get('ok')}, "
+                        f"добавлено {job.get('added')}, в пуле {job.get('pool_total')}.")
+        else:
+            text_out = f"Статус: {job.get('status')}, ключей в задании: {len(job.get('links', []))}."
+        send(chat_id, text_out, None)
         return True
     usage = ("Команды:\n"
              "/grant ID ДНИ — выдать подписку на N дней\n"
